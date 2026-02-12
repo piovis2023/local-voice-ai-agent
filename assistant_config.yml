@@ -22,6 +22,44 @@ tts:
   provider: "kokoro"
   voice: "af_heart"
 
+# Phase 8: Chatterbox TTS Voice Cloning (R-18)
+# Uncomment ONE of the blocks below to switch to Chatterbox.
+# IMPORTANT: Install deps safely — do NOT let pip overwrite your torch/CUDA:
+#
+# === Option A: Official original or turbo model ===
+#   pip install --no-deps chatterbox-tts
+#
+# === Option B: rsxdalv faster branch (torch.compile + CUDA graphs) ===
+#   pip install --no-deps git+https://github.com/rsxdalv/chatterbox.git@faster
+#
+# Then install ONLY the missing non-torch dependencies manually:
+#   pip install transformers accelerate tqdm scipy conformer
+#
+# --- Original model (voice cloning + emotion control) ---
+# tts:
+#   provider: "chatterbox"
+#   voice_file: "path/to/your_voice.wav"   # 5-10s reference WAV
+#   model_type: "original"                  # 0.5B params, 10-step diffusion
+#   device: "auto"                          # auto | cuda | cpu
+#   exaggeration: 0.5                       # 0.0-1.0 emotion intensity
+#   cfg_weight: 0.5                         # 0.0-1.0 pacing/adherence
+#
+# --- Turbo model (fastest official, English-only) ---
+# tts:
+#   provider: "chatterbox"
+#   voice_file: "path/to/your_voice.wav"
+#   model_type: "turbo"                     # 350M params, 1-step diffusion, ~6x RT
+#   device: "auto"
+#
+# --- rsxdalv faster branch (fastest overall, torch.compile + CUDA graphs) ---
+# tts:
+#   provider: "chatterbox"
+#   voice_file: "path/to/your_voice.wav"
+#   model_type: "rsxdalv-faster"            # rsxdalv fork with torch.compile opts
+#   device: "auto"                          # CUDA strongly recommended
+#   exaggeration: 0.5
+#   cfg_weight: 0.5
+
 mode: "chat"
 
 conversation:

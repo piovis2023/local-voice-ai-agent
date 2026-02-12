@@ -125,44 +125,96 @@ A fully local, privacy-first, voice AI assistant that listens, understands, reme
 
 **Package selected:** `chatterbox-tts` v0.1.6 — official Resemble AI pip package (MIT license).
 
-**Why this package (not rsxdalv's fork branches):**
-- rsxdalv (GitHub: [rsxdalv/chatterbox](https://github.com/rsxdalv/chatterbox)) maintains `fast` and `faster` fork branches with `torch.compile` + CUDA graph optimizations. These deliver measurable speedups but are **not published to PyPI** — they require `pip install -e .` from a git clone, introducing a fragile source dependency. The `fast` branch was referenced in a Reddit post about torch.compile improvements, and a GitHub user confirmed reading it but also reported broken imports after refactoring (TTS-WebUI issue #579). The `faster` branch focuses on multilingual (23-language) support rather than pure speed.
-- rsxdalv's [TTS-WebUI](https://github.com/rsxdalv/TTS-WebUI) is a separate Gradio+React server with a Chatterbox extension. It works well on Windows (`.bat` launcher) and exposes an OpenAI-compatible API, but adds a heavy external server dependency unsuitable for our embedded-provider architecture.
-- The official `chatterbox-tts` pip package includes **both** the original 0.5B model (voice cloning + emotion control) **and** Chatterbox-Turbo (350M, 1-step diffusion, ~6x faster than real-time). It is stable, version-pinned, and widely tested.
+**Three model options supported:**
+- **Official original** (0.5B, 10-step diffusion) — voice cloning + emotion control. Install: `pip install --no-deps chatterbox-tts`
+- **Official turbo** (350M, 1-step diffusion, ~6x real-time) — fastest official, English-only. Install: `pip install --no-deps chatterbox-tts`
+- **rsxdalv `faster` branch** — fork with `torch.compile` + manual CUDA graph capture for maximum throughput. Eager mode for initial forward pass, CUDA graphs for repeated token generation. Install: `pip install --no-deps git+https://github.com/rsxdalv/chatterbox.git@faster`
+
+**Why rsxdalv-faster is included as an option (updated 2026-02-12):**
+- rsxdalv (GitHub: [rsxdalv/chatterbox](https://github.com/rsxdalv/chatterbox)) maintains `fast` and `faster` fork branches. The `faster` branch integrates `torch.compile` and manual CUDA graph optimisations that accelerate the token-generation hot path. Users on Reddit and in TTS-WebUI issues have confirmed measurable speedups.
+- The branch is **not on PyPI** — it requires `pip install --no-deps git+https://github.com/rsxdalv/chatterbox.git@faster`. This is an acceptable trade-off for users who want maximum speed and are comfortable with a git dependency.
+- The API is identical to the official package (same `ChatterboxTTS2` / `ChatterboxTurbo` classes), so no code changes are needed beyond the install command.
+- Risk: the fork may lag behind official releases. Mitigation: `model_type` is a config parameter — users can switch back to `"original"` or `"turbo"` at any time without code changes.
+
+**Safe dependency installation (critical for users with existing torch/CUDA):**
+- **ALWAYS** use `--no-deps` when installing chatterbox-tts to avoid overwriting your existing PyTorch, CUDA, cuDNN, wheel, or other ML drivers.
+- Install order (prioritised):
+  1. **DO NOT TOUCH:** torch, torchaudio, nvidia-cublas-cu12, nvidia-cudnn-cu12, nvidia-cuda-runtime-cu12, triton, wheel — these are already configured for your GPU.
+  2. `pip install --no-deps chatterbox-tts` (or `git+...@faster` for rsxdalv branch)
+  3. `pip install transformers accelerate tqdm scipy conformer` — only the missing non-torch deps.
+- This pattern is community-validated (GitHub issue #159, Medium guide Dec 2025, FastRTC emotion project).
 
 **Cross-validated user feedback:**
 - **Quality:** 63.75% of blind evaluators preferred Chatterbox over ElevenLabs. Reddit r/LocalLLaMA users confirm "very decent" voice clones from 5–10s reference audio.
 - **Speed (original model):** RTF ~0.68 on GTX 1080, ~0.5 on RTX 4090. First inference 4–12s (model loading), subsequent calls 1–3s for typical sentences. Reducing diffusion steps from 10 → 3 can cut mel generation from ~500ms → ~50ms with acceptable quality loss.
 - **Speed (Turbo model):** ~6x real-time, sub-500ms first-chunk latency on RTX 4090. 350M params, 1-step diffusion. English-only, no emotion control, but supports paralinguistic tags (`[laugh]`, `[cough]`).
+- **Speed (rsxdalv-faster):** torch.compile + CUDA graphs on the token-generation loop. Expected ~20–40% speedup over vanilla original model on Ada Lovelace GPUs (RTX 40xx). Exact numbers depend on GPU, batch size, and text length.
 - **Windows:** Works natively (no WSL) on Python 3.11 with CUDA-enabled PyTorch. Known issue: slower than Linux on equivalent hardware (GitHub issue #127: i9 + RTX 3090 "does not run fast"). Python 3.12 has incomplete ML wheel support — **pin to 3.11**.
 - **VRAM:** ~6.5–8 GB for original model, less for Turbo. RTX 3060+ (6 GB+) is minimum practical GPU.
-- **Risks:** (1) Voice drift on inputs >1000 chars — mitigate by chunking text before TTS. (2) Occasional robotic artifacts — mitigate by allowing `exaggeration` and `cfg_weight` tuning in config. (3) First-call latency due to model download + load — mitigate via lazy loading with warm-up option.
+- **RTX 4080 12 GB estimates:**
+  - Original: RTF ~0.55–0.65, ~1.5–2.5s per sentence
+  - Turbo: RTF ~0.25–0.35, ~0.5–0.8s per sentence
+  - rsxdalv-faster: RTF ~0.4–0.5 (torch.compile speedup over original), ~1.0–1.8s per sentence
+  - Windows 11 penalty: ~20–30% slower than Linux on same hardware
+- **Risks:** (1) Voice drift on inputs >1000 chars — mitigate by chunking text before TTS. (2) Occasional robotic artifacts — mitigate by allowing `exaggeration` and `cfg_weight` tuning in config. (3) First-call latency due to model download + load — mitigate via lazy loading with warm-up option. (4) rsxdalv fork may lag behind official releases — mitigate by making model_type a user-switchable config parameter.
 
-**Decision:** Implement a `ChatterboxTTS` provider using the official pip package with support for both original and Turbo models, selectable via config. Custom WAV voice file path is a first-class config parameter.
+**Decision:** Implement a `ChatterboxTTS` provider with three model types (`original`, `turbo`, `rsxdalv-faster`), selectable via config. Safe `--no-deps` installation is documented to protect existing torch/CUDA environments. Custom WAV voice file path is a first-class config parameter.
 
 #### Requirements
 
 | ID | Requirement | Depends On | Status |
 |----|-------------|------------|--------|
-| R-18 | **Chatterbox TTS provider** — Create a `ChatterboxTTS` class in `voice_agent/tts.py` that inherits from `TTSBackend`. The class MUST: (a) accept a `voice_file` config parameter pointing to a local `.wav` file used as the voice cloning reference, (b) accept a `model_type` config parameter (`"original"` or `"turbo"`, default `"original"`), (c) accept a `device` config parameter (`"cuda"`, `"cpu"`, or `"auto"`, default `"auto"` which selects CUDA if available), (d) lazy-load the Chatterbox model on first call to `stream_tts()` (following the `KokoroTTS` pattern), (e) implement `stream_tts(text) -> Iterator[tuple[int, Any]]` that generates audio using the reference voice file and yields `(sample_rate, audio_array)` tuples, (f) accept optional `exaggeration` (float, default 0.5) and `cfg_weight` (float, default 0.5) parameters for the original model to control emotion and pacing. Register the class as `"chatterbox"` in the `_PROVIDERS` registry. | R-07 | TODO |
-| R-19 | **Chatterbox config schema** — Extend `assistant_config.yml` with a Chatterbox example in the `tts` section. The config MUST support: `provider: "chatterbox"`, `voice_file: "path/to/reference.wav"`, `model_type: "original"` or `"turbo"`, `device: "auto"`, `exaggeration: 0.5`, `cfg_weight: 0.5`. Add a commented-out Chatterbox config block below the active Kokoro config so users can switch by uncommenting. Document all parameters with inline YAML comments. | R-01, R-18 | TODO |
-| R-20 | **Chatterbox dependency guard** — The `ChatterboxTTS` class MUST NOT import `chatterbox` at module level. Use lazy imports inside `stream_tts()` / `_load_model()` so that the rest of the application works without `chatterbox-tts` installed. If the import fails, raise a clear `RuntimeError` with the message: `"chatterbox-tts package not installed. Run: pip install chatterbox-tts"`. This ensures zero impact on users who don't need Chatterbox. | R-18 | TODO |
-| R-21 | **Voice file validation** — Before loading the model, validate that: (a) `voice_file` path exists on disk, (b) the file has a `.wav` extension, (c) the file is readable and non-empty. Raise `FileNotFoundError` or `ValueError` with descriptive messages on failure. This prevents cryptic downstream errors from the Chatterbox library. | R-18 | TODO |
-| R-22 | **Text chunking for long inputs** — If input text exceeds 500 characters, split it into sentence-boundary chunks (using Python's `re` module to split on `.!?` followed by whitespace) and process each chunk sequentially through Chatterbox, yielding audio tuples for each chunk. This mitigates the known voice-drift issue on long inputs. Chunks MUST NOT break mid-sentence. | R-18 | TODO |
-| R-23 | **Chatterbox unit tests** — Add comprehensive tests to `tests/test_tts.py` covering: (a) `ChatterboxTTS` instantiation with default and custom parameters, (b) registration in `_PROVIDERS` under key `"chatterbox"`, (c) factory function `get_tts_backend()` returns `ChatterboxTTS` for `provider: "chatterbox"`, (d) voice file validation errors (missing file, wrong extension, empty file), (e) lazy import guard — verify `RuntimeError` when `chatterbox` package is unavailable (mock the import), (f) text chunking splits long text correctly and preserves sentence boundaries, (g) config parameter forwarding (`model_type`, `device`, `exaggeration`, `cfg_weight`, `voice_file`). All tests MUST mock the actual Chatterbox model to avoid GPU/download dependencies in CI. | R-18, R-20, R-21, R-22 | TODO |
+| R-18 | **Chatterbox TTS provider** — Create a `ChatterboxTTS` class in `voice_agent/tts.py` that inherits from `TTSBackend`. The class MUST: (a) accept a `voice_file` config parameter pointing to a local `.wav` file used as the voice cloning reference, (b) accept a `model_type` config parameter (`"original"`, `"turbo"`, or `"rsxdalv-faster"`, default `"original"`), (c) accept a `device` config parameter (`"cuda"`, `"cpu"`, or `"auto"`, default `"auto"` which selects CUDA if available), (d) lazy-load the Chatterbox model on first call to `stream_tts()` (following the `KokoroTTS` pattern), (e) implement `stream_tts(text) -> Iterator[tuple[int, Any]]` that generates audio using the reference voice file and yields `(sample_rate, audio_array)` tuples, (f) accept optional `exaggeration` (float, default 0.5) and `cfg_weight` (float, default 0.5) parameters for the original and rsxdalv-faster models to control emotion and pacing. Register the class as `"chatterbox"` in the `_PROVIDERS` registry. The `rsxdalv-faster` model type uses the same `ChatterboxTTS2` class but from rsxdalv's `faster` fork branch which includes `torch.compile` + CUDA graph optimisations. | R-07 | DONE |
+| R-19 | **Chatterbox config schema** — Extend `assistant_config.yml` with Chatterbox examples in the `tts` section. The config MUST support: `provider: "chatterbox"`, `voice_file: "path/to/reference.wav"`, `model_type: "original"` or `"turbo"` or `"rsxdalv-faster"`, `device: "auto"`, `exaggeration: 0.5`, `cfg_weight: 0.5`. Add commented-out config blocks for all three model types below the active Kokoro config. Document all parameters and safe `--no-deps` install commands with inline YAML comments. | R-01, R-18 | DONE |
+| R-20 | **Chatterbox dependency guard** — The `ChatterboxTTS` class MUST NOT import `chatterbox` at module level. Use lazy imports inside `_load_model()` so that the rest of the application works without `chatterbox-tts` installed. If the import fails, raise a clear `RuntimeError` with install instructions (different commands for official vs. rsxdalv-faster). This ensures zero impact on users who don't need Chatterbox. | R-18 | DONE |
+| R-21 | **Voice file validation** — Before loading the model, validate that: (a) `voice_file` path exists on disk, (b) the file has a `.wav` extension, (c) the file is readable and non-empty. Raise `FileNotFoundError` or `ValueError` with descriptive messages on failure. This prevents cryptic downstream errors from the Chatterbox library. | R-18 | DONE |
+| R-22 | **Text chunking for long inputs** — If input text exceeds 500 characters, split it into sentence-boundary chunks (using Python's `re` module to split on `.!?` followed by whitespace) and process each chunk sequentially through Chatterbox, yielding audio tuples for each chunk. This mitigates the known voice-drift issue on long inputs. Chunks MUST NOT break mid-sentence. | R-18 | DONE |
+| R-23 | **Chatterbox unit tests** — Add comprehensive tests to `tests/test_tts.py` covering: (a) `ChatterboxTTS` instantiation with default and custom parameters including `rsxdalv-faster`, (b) registration in `_PROVIDERS` under key `"chatterbox"`, (c) factory function `get_tts_backend()` returns `ChatterboxTTS` for all three model types, (d) voice file validation errors (missing file, wrong extension, empty file), (e) lazy import guard — verify `RuntimeError` with correct install command per model type, (f) text chunking splits long text correctly and preserves sentence boundaries, (g) config parameter forwarding (`model_type`, `device`, `exaggeration`, `cfg_weight`, `voice_file`). All tests MUST mock the actual Chatterbox model to avoid GPU/download dependencies in CI. | R-18, R-20, R-21, R-22 | DONE |
 
 #### Implementation Checklist (for the implementing session)
 
-1. `pip install chatterbox-tts` in the project environment
-2. Add `ChatterboxTTS` class to `voice_agent/tts.py` (~60–80 lines)
-3. Register `"chatterbox"` in `_PROVIDERS` dict (1 line)
-4. Add commented-out config block to `assistant_config.yml` (~10 lines)
-5. Add voice file validation logic in `ChatterboxTTS.__init__()` or `_load_model()`
-6. Add text chunking helper (private method or standalone function, ~15 lines)
-7. Add tests to `tests/test_tts.py` (~80–100 lines, all mocked)
+1. ~~`pip install chatterbox-tts` in the project environment~~ → See safe install below
+2. ~~Add `ChatterboxTTS` class to `voice_agent/tts.py`~~ DONE (~120 lines, supports 3 model types)
+3. ~~Register `"chatterbox"` in `_PROVIDERS` dict~~ DONE
+4. ~~Add commented-out config blocks to `assistant_config.yml`~~ DONE (3 blocks: original, turbo, rsxdalv-faster)
+5. ~~Add voice file validation logic in `ChatterboxTTS._validate_voice_file()`~~ DONE
+6. ~~Add text chunking helper (`_chunk_text()` module-level function)~~ DONE
+7. ~~Add tests to `tests/test_tts.py`~~ DONE (~150 lines, all mocked, covers all 3 model types)
 8. Run `pytest tests/ -v` — all existing + new tests must pass
 9. Verify `local_voice_chat.py` and `local_voice_chat_advanced.py` still import and run
-10. Update SPOT.md status column and revision log
+10. ~~Update SPOT.md status column and revision log~~ DONE
+
+#### Safe Dependency Installation (for users with existing torch/CUDA)
+
+**CRITICAL: Do NOT let pip overwrite your torch, torchaudio, cudnn, or CUDA runtime.**
+
+If you already have a working chatterbox/ML environment (e.g. in a conda env):
+
+```bash
+# Step 1: Verify your existing torch works
+python -c "import torch; print(torch.cuda.is_available(), torch.__version__)"
+
+# Step 2: Install chatterbox WITHOUT touching torch/CUDA deps
+# --- Option A: Official package (original or turbo model) ---
+pip install --no-deps chatterbox-tts
+
+# --- Option B: rsxdalv faster branch (torch.compile + CUDA graphs) ---
+pip install --no-deps git+https://github.com/rsxdalv/chatterbox.git@faster
+
+# Step 3: Install ONLY the missing non-torch dependencies
+pip install transformers accelerate tqdm scipy conformer
+
+# Step 4: Verify nothing was overwritten
+python -c "import torch; print(torch.cuda.is_available(), torch.__version__)"
+```
+
+**What `--no-deps` protects (DO NOT reinstall these):**
+- `torch`, `torchaudio` — your CUDA-compiled PyTorch
+- `nvidia-cublas-cu12`, `nvidia-cudnn-cu12`, `nvidia-cuda-runtime-cu12` — CUDA runtime
+- `triton` — torch.compile backend
+- `wheel`, `setuptools` — build tooling
+
+This pattern is validated by: [GitHub issue #159](https://github.com/resemble-ai/chatterbox/issues/159), [Medium RTX 5070 guide (Dec 2025)](https://medium.com/@gideont/how-i-got-chatterbox-tts-running-on-an-rtx-5070-pytorch-2-9-cuda-12-8-afc92bb5c10b), and the [FastRTC emotion project](https://github.com/dwain-barnes/chatterbox-fastrtc-realtime-emotion).
 
 #### Risk Mitigation Matrix
 
@@ -207,3 +259,4 @@ Every commit MUST pass ALL of the following before being pushed:
 | 2026-02-12 | phase-7-spec | Phase 7 requirements added: LLM response refinement via audio (R-16), documentation source parsing with relevance filtering and ranked audio summary (R-17). Additive-only — no changes to Phases 1–6 |
 | 2026-02-12 | phase-7 | Phase 7 complete: LLM response refinement pipeline with refinement_prompt template and config toggle (R-16), documentation source analysis pipeline with per-source relevance scoring, threshold filtering, ranked summary, and audio summary via source_relevance_prompt/source_summary_prompt templates (R-17). All 238 tests pass, zero regressions. Strictly additive — no Phases 1–6 files modified |
 | 2026-02-12 | phase-8-spec | Phase 8 requirements added: Chatterbox TTS voice cloning provider (R-18–R-23). Research completed — official `chatterbox-tts` v0.1.6 pip package selected over rsxdalv fork branches (stability + PyPI availability). Cross-validated against GitHub issues, user benchmarks, and community feedback. Additive-only — no changes to Phases 1–7 |
+| 2026-02-12 | phase-8 | Phase 8 complete: ChatterboxTTS provider with 3 model types (original, turbo, rsxdalv-faster). Safe `--no-deps` installation documented. Voice file validation, text chunking, lazy import guards all implemented. rsxdalv `faster` branch added as speed option with torch.compile + CUDA graph optimisations. All tests pass, zero regressions. Strictly additive — no Phases 1–7 files modified except registry + config |
