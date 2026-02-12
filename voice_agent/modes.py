@@ -44,9 +44,9 @@ class ModeHandler(abc.ABC):
         self.config = config
         self.llm = llm or get_llm_backend(config)
         self.context_files = context_files or []
-        self.history = ConversationHistory(
-            max_turns=getattr(config.conversation, "max_turns", 20),
-        )
+        conv = config.get("conversation")
+        max_turns = conv.get("max_turns", 20) if isinstance(conv, dict) else 20
+        self.history = ConversationHistory(max_turns=max_turns)
         # Build and inject the mode-specific system prompt
         system_prompt = self.build_system_prompt()
         self.history.add("system", system_prompt)
@@ -83,9 +83,9 @@ class ChatMode(ModeHandler):
     """
 
     def build_system_prompt(self) -> str:
-        scratchpad = scratchpad_prompt_section(
-            getattr(self.config.scratchpad, "file", None),
-        )
+        sp_conf = self.config.get("scratchpad")
+        sp_file = sp_conf.get("file") if isinstance(sp_conf, dict) else None
+        scratchpad = scratchpad_prompt_section(sp_file)
         context = context_prompt_section(self.context_files)
 
         try:
@@ -130,9 +130,9 @@ class AgentMode(ModeHandler):
         super().__init__(config, llm=llm, context_files=context_files)
 
     def build_system_prompt(self) -> str:
-        scratchpad = scratchpad_prompt_section(
-            getattr(self.config.scratchpad, "file", None),
-        )
+        sp_conf = self.config.get("scratchpad")
+        sp_file = sp_conf.get("file") if isinstance(sp_conf, dict) else None
+        scratchpad = scratchpad_prompt_section(sp_file)
         context = context_prompt_section(self.context_files)
 
         try:
@@ -193,7 +193,7 @@ def get_mode_handler(
     ValueError
         If the configured mode is not recognised.
     """
-    mode = getattr(config, "mode", "chat").lower()
+    mode = config.get("mode", "chat").lower()
 
     cls = _MODES.get(mode)
     if cls is None:

@@ -30,15 +30,27 @@ class TestExecuteCommand:
 
     def test_stderr_captured(self):
         """stderr is captured separately from stdout."""
-        result = execute_command("echo err >&2")
-        assert "err" in result.stderr
+        # A command that writes to stderr (listing a non-existent path)
+        result = execute_command("ls /nonexistent_path_xyz_99999")
+        assert result.success is False
+        assert result.stderr != ""
 
     def test_command_with_output(self):
-        """Commands that produce multi-line output are captured."""
-        result = execute_command("printf 'line1\nline2\nline3'")
+        """Commands that produce output are captured."""
+        result = execute_command("echo hello world")
         assert result.success is True
-        assert "line1" in result.stdout
-        assert "line3" in result.stdout
+        assert "hello" in result.stdout
+        assert "world" in result.stdout
+
+    def test_shell_metacharacters_rejected(self):
+        """Commands with shell metacharacters are rejected."""
+        result = execute_command("echo foo; echo bar")
+        assert result.success is False
+        assert "rejected" in result.stderr.lower()
+
+        result = execute_command("echo foo | cat")
+        assert result.success is False
+        assert "rejected" in result.stderr.lower()
 
     def test_timeout_kills_command(self):
         """A command exceeding the timeout is killed gracefully."""

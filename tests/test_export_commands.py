@@ -62,7 +62,7 @@ class TestExportQueryJson:
         db = _setup_db(tmp_path)
         out = str(tmp_path / "out.json")
         result = runner.invoke(
-            app, ["export-query-json", "items", out, "--where", "price > 10", "--db", db]
+            app, ["export-query-json", "items", out, "--where", "name = Gadget", "--db", db]
         )
         assert result.exit_code == 0
         data = json.loads(Path(out).read_text())

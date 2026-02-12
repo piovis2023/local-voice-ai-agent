@@ -6,6 +6,7 @@ variables such as assistant name, commands, scratchpad, context, and user input.
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -79,7 +80,6 @@ def render_template(
     for key, value in vars_.items():
         raw = raw.replace(f"{{{key}}}", str(value))
     # Clean up any remaining unreplaced placeholders
-    import re
     raw = re.sub(r"\{(\w+)\}", "", raw)
     # Collapse runs of 3+ newlines into 2
     raw = re.sub(r"\n{3,}", "\n\n", raw)

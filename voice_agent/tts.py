@@ -61,7 +61,8 @@ class Pyttsx3TTS(TTSBackend):
         self._rate: int = kwargs.get("rate", 150)
 
     def stream_tts(self, text: str) -> Iterator[tuple[int, Any]]:
-        import io
+        import os
+        import tempfile
         import wave
 
         import numpy as np
@@ -77,14 +78,14 @@ class Pyttsx3TTS(TTSBackend):
                     engine.setProperty("voice", v.id)
                     break
 
-        # Save to a temporary in-memory WAV buffer
-        buf = io.BytesIO()
-        engine.save_to_file(text, buf.name if hasattr(buf, "name") else "/tmp/_pyttsx3_tts.wav")
-        engine.runAndWait()
+        # Write to a unique temporary WAV file to avoid race conditions
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
 
-        # Read back the WAV file and yield as numpy array
-        wav_path = "/tmp/_pyttsx3_tts.wav"
         try:
+            engine.save_to_file(text, wav_path)
+            engine.runAndWait()
+
             with wave.open(wav_path, "rb") as wf:
                 sample_rate = wf.getframerate()
                 frames = wf.readframes(wf.getnframes())
@@ -92,6 +93,11 @@ class Pyttsx3TTS(TTSBackend):
                 yield (sample_rate, audio)
         except FileNotFoundError:
             raise RuntimeError("pyttsx3 failed to generate audio output.")
+        finally:
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
 
 
 class RealtimeTTSBackend(TTSBackend):
@@ -101,8 +107,11 @@ class RealtimeTTSBackend(TTSBackend):
     text-to-speech via the system's native TTS capabilities.
     """
 
+    DEFAULT_SAMPLE_RATE = 22050
+
     def __init__(self, voice: str | None = None, **kwargs: Any) -> None:
         super().__init__(voice, **kwargs)
+        self._sample_rate: int = kwargs.get("sample_rate", self.DEFAULT_SAMPLE_RATE)
 
     def stream_tts(self, text: str) -> Iterator[tuple[int, Any]]:
         import numpy as np
@@ -115,7 +124,6 @@ class RealtimeTTSBackend(TTSBackend):
         stream = TextToAudioStream(engine)
         stream.feed(text)
 
-        sample_rate = 22050
         audio_chunks: list[bytes] = []
 
         def on_audio_chunk(chunk: bytes) -> None:
@@ -126,7 +134,7 @@ class RealtimeTTSBackend(TTSBackend):
         if audio_chunks:
             raw = b"".join(audio_chunks)
             audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-            yield (sample_rate, audio)
+            yield (self._sample_rate, audio)
 
 
 # ---------------------------------------------------------------------------
