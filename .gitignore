@@ -15,3 +15,6 @@ scratchpad.md
 
 # Test/cache
 .pytest_cache/
+
+# Chatterbox installer snapshots
+scripts/install_snapshot.json

@@ -24,16 +24,15 @@ tts:
 
 # Phase 8: Chatterbox TTS Voice Cloning (R-18)
 # Uncomment ONE of the blocks below to switch to Chatterbox.
-# IMPORTANT: Install deps safely — do NOT let pip overwrite your torch/CUDA:
 #
-# === Option A: Official original or turbo model ===
-#   pip install --no-deps chatterbox-tts
+# INSTALL FIRST (safe — won't touch your torch/CUDA):
+#   python scripts/install_chatterbox.py original         # or turbo / rsxdalv-faster
+#   Windows: double-click scripts/install_chatterbox.bat
 #
-# === Option B: rsxdalv faster branch (torch.compile + CUDA graphs) ===
-#   pip install --no-deps git+https://github.com/rsxdalv/chatterbox.git@faster
-#
-# Then install ONLY the missing non-torch dependencies manually:
-#   pip install transformers accelerate tqdm scipy conformer
+# Manual alternative:
+#   pip install --no-deps chatterbox-tts                   # official original/turbo
+#   pip install --no-deps git+https://github.com/rsxdalv/chatterbox.git@faster  # fastest
+#   pip install transformers accelerate tqdm scipy conformer  # non-torch deps only
 #
 # --- Original model (voice cloning + emotion control) ---
 # tts:

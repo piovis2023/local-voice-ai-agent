@@ -188,7 +188,19 @@ A fully local, privacy-first, voice AI assistant that listens, understands, reme
 
 **CRITICAL: Do NOT let pip overwrite your torch, torchaudio, cudnn, or CUDA runtime.**
 
-If you already have a working chatterbox/ML environment (e.g. in a conda env):
+**Recommended: Use the automated installer script** (`scripts/install_chatterbox.py`).
+It snapshots all packages before and after, verifies nothing protected was changed,
+and rolls back automatically if any driver was touched.
+
+```bash
+# Automated (recommended) — Windows: double-click scripts/install_chatterbox.bat
+python scripts/install_chatterbox.py original         # voice cloning + emotion
+python scripts/install_chatterbox.py turbo            # fastest official (~6x RT)
+python scripts/install_chatterbox.py rsxdalv-faster   # torch.compile + CUDA graphs
+python scripts/install_chatterbox.py --check          # verify only, install nothing
+```
+
+**Manual alternative** (if you prefer full control):
 
 ```bash
 # Step 1: Verify your existing torch works
@@ -201,8 +213,10 @@ pip install --no-deps chatterbox-tts
 # --- Option B: rsxdalv faster branch (torch.compile + CUDA graphs) ---
 pip install --no-deps git+https://github.com/rsxdalv/chatterbox.git@faster
 
-# Step 3: Install ONLY the missing non-torch dependencies
-pip install transformers accelerate tqdm scipy conformer
+# Step 3: Install ONLY the missing non-torch dependencies (one-by-one for safety)
+pip install transformers accelerate conformer scipy tqdm
+pip install librosa soundfile encodec huggingface-hub safetensors
+pip install nemo_text_processing
 
 # Step 4: Verify nothing was overwritten
 python -c "import torch; print(torch.cuda.is_available(), torch.__version__)"
@@ -213,6 +227,16 @@ python -c "import torch; print(torch.cuda.is_available(), torch.__version__)"
 - `nvidia-cublas-cu12`, `nvidia-cudnn-cu12`, `nvidia-cuda-runtime-cu12` — CUDA runtime
 - `triton` — torch.compile backend
 - `wheel`, `setuptools` — build tooling
+
+**What the install script does (pipeline):**
+1. Snapshots every package version via `pip freeze`
+2. Verifies torch + CUDA are working and queries GPU VRAM
+3. Installs chatterbox with `--no-deps` (NEVER touches torch)
+4. Installs non-torch deps one-by-one (fault isolation)
+5. Re-snapshots and diffs to prove nothing protected was overwritten
+6. Smoke-tests `from chatterbox.tts import ChatterboxTTS2`
+7. **Automatically rolls back** if any protected package changed version
+8. Saves before/after snapshot to JSON for diagnostics (`--save-snapshot`)
 
 This pattern is validated by: [GitHub issue #159](https://github.com/resemble-ai/chatterbox/issues/159), [Medium RTX 5070 guide (Dec 2025)](https://medium.com/@gideont/how-i-got-chatterbox-tts-running-on-an-rtx-5070-pytorch-2-9-cuda-12-8-afc92bb5c10b), and the [FastRTC emotion project](https://github.com/dwain-barnes/chatterbox-fastrtc-realtime-emotion).
 
