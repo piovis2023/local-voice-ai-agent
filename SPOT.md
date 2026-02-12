@@ -61,8 +61,8 @@ A fully local, privacy-first, voice AI assistant that listens, understands, reme
 
 | ID | Requirement | Depends On | Status |
 |----|-------------|------------|--------|
-| R-04 | **Context files** — Accept a `--context-files` CLI argument (list of file paths). Read file contents at startup and inject them into the LLM system prompt as reference material. | R-01 | TODO |
-| R-05 | **XML prompt templates** — Create a `prompts/` directory with XML template files for: system prompt, agentic command prompt, concise response prompt. Build a template loader that reads and interpolates variables (assistant name, commands, scratchpad, context, user input). | R-01 | TODO |
+| R-04 | **Context files** — Accept a `--context-files` CLI argument (list of file paths). Read file contents at startup and inject them into the LLM system prompt as reference material. | R-01 | DONE |
+| R-05 | **XML prompt templates** — Create a `prompts/` directory with XML template files for: system prompt, agentic command prompt, concise response prompt. Build a template loader that reads and interpolates variables (assistant name, commands, scratchpad, context, user input). | R-01 | DONE |
 
 ### Phase 3: Multi-Backend Layer
 
@@ -115,3 +115,4 @@ Every commit MUST pass ALL of the following before being pushed:
 |------|--------|---------|
 | 2026-02-12 | _initial_ | SPOT document created with 15 requirements across 6 phases |
 | 2026-02-12 | phase-1 | Phase 1 complete: YAML config (R-01), conversation history (R-02), scratchpad memory (R-03) |
+| 2026-02-12 | phase-2 | Phase 2 complete: context files CLI (R-04), XML prompt templates with loader (R-05) |
