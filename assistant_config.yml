@@ -33,3 +33,14 @@ scratchpad:
 execution:
   timeout: 30
 
+# Phase 7: LLM Response Refinement (R-16)
+# When enabled, LLM/CLI responses are refined for spoken audio delivery.
+refinement:
+  enabled: false
+
+# Phase 7: Documentation Source Analysis (R-17)
+# When enabled, documentation sources are scored for relevance and summarised.
+source_analysis:
+  enabled: false
+  relevance_threshold: 0.5
+
