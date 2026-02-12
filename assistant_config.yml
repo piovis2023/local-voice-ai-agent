@@ -1,0 +1,32 @@
+# Local Voice AI Agent Configuration
+# Single config file for all backend, voice, and persona settings (SF-05)
+
+assistant:
+  name: "Nova"
+  persona: >-
+    You are a helpful AI assistant in a WebRTC call. Your output will be
+    converted to audio so don't include emojis or special characters in your
+    answers. Respond to what the user said in a creative and helpful way.
+
+human:
+  name: "User"
+
+stt:
+  engine: "moonshine"
+
+llm:
+  provider: "ollama"
+  model: "gemma3:4b"
+
+tts:
+  provider: "kokoro"
+  voice: "af_heart"
+
+mode: "chat"
+
+conversation:
+  max_turns: 20
+
+scratchpad:
+  file: "scratchpad.md"
+
