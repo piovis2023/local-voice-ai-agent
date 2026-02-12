@@ -114,3 +114,4 @@ Every commit MUST pass ALL of the following before being pushed:
 | Date | Commit | Changes |
 |------|--------|---------|
 | 2026-02-12 | _initial_ | SPOT document created with 15 requirements across 6 phases |
+| 2026-02-12 | _hooks_ | Added SessionStart + Stop hooks for automated SPOT alignment and QA enforcement |
