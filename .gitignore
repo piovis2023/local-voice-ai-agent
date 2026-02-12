@@ -9,3 +9,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Scratchpad (user session data)
+scratchpad.md
+
+# Test/cache
+.pytest_cache/
