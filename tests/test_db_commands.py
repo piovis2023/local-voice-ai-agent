@@ -128,7 +128,7 @@ class TestQueryRows:
         _insert(db, "users", '1, "Alice", 30')
         _insert(db, "users", '2, "Bob", 25')
         result = runner.invoke(
-            app, ["query-rows", "users", "--where", "age > 26", "--db", db]
+            app, ["query-rows", "users", "--where", "name = Alice", "--db", db]
         )
         assert result.exit_code == 0
         assert "Alice" in result.output

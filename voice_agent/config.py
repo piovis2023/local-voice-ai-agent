@@ -28,6 +28,21 @@ class ConfigNode:
     def __repr__(self) -> str:
         return f"ConfigNode({self._data!r})"
 
+    def __getattr__(self, name: str) -> Any:
+        # Only intercept keys that exist in the underlying data as dicts
+        # (i.e. sub-sections). For anything else, raise AttributeError so
+        # that getattr(obj, key, default) works correctly.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        raise AttributeError(
+            f"Config has no attribute {name!r}. "
+            f"Available keys: {', '.join(sorted(self._data)) or '(none)'}"
+        )
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Return the value for *key* if present, else *default*."""
+        return self._data.get(key, default)
+
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
 

@@ -98,10 +98,12 @@ def _query(
     """Run a SELECT query and return (rows, column_names)."""
     conn = sqlite3.connect(db)
     try:
-        sql = f"SELECT * FROM {_ident(table)}"
+        sql = f"SELECT * FROM [{_ident(table)}]"
+        params: list[object] = []
         if where:
-            sql += f" WHERE {where}"
-        cursor = conn.execute(sql)
+            col, val, params = _parse_simple_where(where)
+            sql += f" WHERE [{col}] = ?"
+        cursor = conn.execute(sql, params)
         col_names = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
         return rows, col_names
@@ -111,9 +113,43 @@ def _query(
 
 def _ident(name: str) -> str:
     """Sanitise a SQL identifier to prevent injection."""
-    if not name.isidentifier():
+    import re as _re
+
+    if not _re.fullmatch(r"[A-Za-z_]\w*", name):
         raise typer.BadParameter(f"Invalid identifier: {name!r}")
     return name
+
+
+def _coerce_value(raw: str) -> int | float | str:
+    """Coerce a raw string token into an int, float, or stripped string."""
+    raw = raw.strip().strip('"').strip("'")
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    return raw
+
+
+def _parse_simple_where(clause: str) -> tuple[str, object, list[object]]:
+    """Parse a simple 'column = value' WHERE clause.
+
+    Returns (column_name, coerced_value, [coerced_value]).
+    """
+    import re as _re
+
+    match = _re.fullmatch(r"\s*(\w+)\s*=\s*(.+)", clause)
+    if not match:
+        raise typer.BadParameter(
+            f"WHERE clause must be 'column = value', got: {clause!r}"
+        )
+    col = match.group(1)
+    _ident(col)
+    val = _coerce_value(match.group(2))
+    return col, val, [val]
 
 
 def _read_scratchpad(path: str) -> str:

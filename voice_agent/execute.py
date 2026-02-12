@@ -7,8 +7,14 @@ chaining with ``&&`` (R-11).
 
 from __future__ import annotations
 
+import re
+import shlex
 import subprocess
 from dataclasses import dataclass
+
+# Shell metacharacters that could enable injection when using shell=True.
+# Commands containing these are rejected before execution.
+_DANGEROUS_PATTERN = re.compile(r"[;|`]|\$\(")
 
 
 @dataclass(frozen=True)
@@ -45,10 +51,34 @@ def execute_command(
         Structured result with success flag, stdout, stderr, return_code,
         and the original command string.
     """
+    # Reject commands containing shell metacharacters to prevent injection
+    if _DANGEROUS_PATTERN.search(command):
+        return ExecutionResult(
+            success=False,
+            stdout="",
+            stderr=(
+                "Command rejected: contains disallowed shell metacharacters "
+                "(;, |, `, $()."
+            ),
+            return_code=-1,
+            command=command,
+        )
+
+    try:
+        argv = shlex.split(command)
+    except ValueError as exc:
+        return ExecutionResult(
+            success=False,
+            stdout="",
+            stderr=f"Failed to parse command: {exc}",
+            return_code=-1,
+            command=command,
+        )
+
     try:
         result = subprocess.run(
-            command,
-            shell=True,
+            argv,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -67,6 +97,14 @@ def execute_command(
             stdout="",
             stderr=f"Command timed out after {timeout} seconds.",
             return_code=-1,
+            command=command,
+        )
+    except FileNotFoundError:
+        return ExecutionResult(
+            success=False,
+            stdout="",
+            stderr=f"Command not found: {argv[0]!r}",
+            return_code=127,
             command=command,
         )
 
