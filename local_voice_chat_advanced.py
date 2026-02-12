@@ -3,13 +3,10 @@ import argparse
 
 from fastrtc import ReplyOnPause, Stream, get_stt_model, get_tts_model
 from loguru import logger
-from ollama import chat
 
 from voice_agent.config import load_config
-from voice_agent.context import context_prompt_section
-from voice_agent.history import ConversationHistory
-from voice_agent.prompt_loader import render_template
-from voice_agent.scratchpad import scratchpad_prompt_section
+from voice_agent.llm import get_llm_backend
+from voice_agent.modes import get_mode_handler
 
 stt_model = get_stt_model()  # moonshine/base
 tts_model = get_tts_model()  # kokoro
@@ -20,55 +17,18 @@ logger.add(sys.stderr, level="DEBUG")
 # Load configuration (R-01)
 config = load_config()
 
-
-def build_system_prompt(context_files: list[str] | None = None) -> str:
-    """Assemble the full system prompt using XML template with variable interpolation (R-05).
-
-    Falls back to simple string concatenation if the template is unavailable.
-    """
-    scratchpad_section = scratchpad_prompt_section(config.scratchpad.file)
-    context_section = context_prompt_section(context_files or [])
-
-    try:
-        return render_template(
-            "system_prompt",
-            variables={
-                "assistant_name": config.assistant.name,
-                "persona": config.assistant.persona,
-                "scratchpad": scratchpad_section,
-                "context": context_section,
-            },
-        )
-    except FileNotFoundError:
-        # Fallback: concatenate directly (backwards-compatible)
-        return config.assistant.persona + scratchpad_section + context_section
-
-
-# Default system prompt (no context files) for module-level import compatibility
-system_prompt = build_system_prompt()
-
-# Session conversation history (R-02)
-history = ConversationHistory(max_turns=config.conversation.max_turns)
-history.add("system", system_prompt)
+# Create shared LLM backend (R-06) and mode handler (R-08)
+llm = get_llm_backend(config)
+mode_handler = get_mode_handler(config, llm=llm)
 
 
 def echo(audio):
     transcript = stt_model.stt(audio)
     logger.debug(f"Transcript: {transcript}")
 
-    # Add user message to history (R-02)
-    history.add("user", transcript)
-
-    response = chat(
-        model=config.llm.model,
-        messages=history.get_messages_for_llm(),
-        options={"num_predict": 200},
-    )
-    response_text = response["message"]["content"]
+    # Delegate to the active mode handler (R-08)
+    response_text = mode_handler.handle_turn(transcript)
     logger.debug(f"Response: {response_text}")
-
-    # Add assistant response to history (R-02)
-    history.add("assistant", response_text)
 
     for audio_chunk in tts_model.stream_tts_sync(response_text):
         yield audio_chunk
@@ -94,13 +54,17 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Rebuild system prompt with context files if provided (R-04)
+    # Rebuild mode handler with context files if provided (R-04, R-08)
     if args.context_files:
-        system_prompt = build_system_prompt(args.context_files)
-        history.clear()
-        history.add("system", system_prompt)
+        mode_handler = get_mode_handler(
+            config, llm=llm, context_files=args.context_files,
+        )
 
-    logger.info(f"Assistant: {config.assistant.name} | LLM: {config.llm.provider}/{config.llm.model} | Mode: {config.mode}")
+    logger.info(
+        f"Assistant: {config.assistant.name} | "
+        f"LLM: {config.llm.provider}/{config.llm.model} | "
+        f"Mode: {mode_handler.mode_name}"
+    )
     if args.context_files:
         logger.info(f"Context files loaded: {args.context_files}")
     stream = create_stream()
