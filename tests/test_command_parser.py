@@ -1,5 +1,7 @@
 """Tests for the voice-to-CLI command parser (R-10)."""
 
+import sys
+
 import pytest
 
 from voice_agent.command_parser import (
@@ -178,8 +180,9 @@ class TestExecuteParsedCommand:
 
     def test_execute_with_timeout(self):
         """Timeout is passed through to execution."""
+        sleep_cmd = f"{sys.executable} -c \"__import__('time').sleep(60)\""
         parsed = ParsedCommand(
-            raw="sleep 60", command="sleep 60", is_valid=True
+            raw=sleep_cmd, command=sleep_cmd, is_valid=True
         )
         results = execute_parsed_command(parsed, timeout=1)
         assert len(results) == 1

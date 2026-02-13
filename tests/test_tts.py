@@ -1,8 +1,14 @@
 """Tests for the TTS abstraction layer (R-07, R-18–R-23)."""
 
+import os
 import sys
+import tempfile
+
 import pytest
 from unittest.mock import MagicMock, patch
+
+# Cross-platform fake voice file path (never accessed on disk in these tests).
+_FAKE_WAV = os.path.join(tempfile.gettempdir(), "ref.wav")
 
 from voice_agent.config import ConfigNode
 from voice_agent.tts import (
@@ -195,38 +201,38 @@ class TestChatterboxInstantiation:
     """R-18: ChatterboxTTS instantiation and parameter forwarding."""
 
     def test_default_params(self):
-        backend = ChatterboxTTS(voice_file="/tmp/ref.wav")
-        assert backend.voice_file == "/tmp/ref.wav"
+        backend = ChatterboxTTS(voice_file=_FAKE_WAV)
+        assert backend.voice_file == _FAKE_WAV
         assert backend.model_type == "original"
         assert backend.device_preference == "auto"
         assert backend.exaggeration == 0.5
         assert backend.cfg_weight == 0.5
 
     def test_turbo_model_type(self):
-        backend = ChatterboxTTS(voice_file="/tmp/ref.wav", model_type="turbo")
+        backend = ChatterboxTTS(voice_file=_FAKE_WAV, model_type="turbo")
         assert backend.model_type == "turbo"
 
     def test_rsxdalv_faster_model_type(self):
-        backend = ChatterboxTTS(voice_file="/tmp/ref.wav", model_type="rsxdalv-faster")
+        backend = ChatterboxTTS(voice_file=_FAKE_WAV, model_type="rsxdalv-faster")
         assert backend.model_type == "rsxdalv-faster"
 
     def test_custom_emotion_params(self):
         backend = ChatterboxTTS(
-            voice_file="/tmp/ref.wav", exaggeration=0.8, cfg_weight=0.3,
+            voice_file=_FAKE_WAV, exaggeration=0.8, cfg_weight=0.3,
         )
         assert backend.exaggeration == 0.8
         assert backend.cfg_weight == 0.3
 
     def test_invalid_model_type_raises(self):
         with pytest.raises(ValueError, match="Unknown Chatterbox model_type"):
-            ChatterboxTTS(voice_file="/tmp/ref.wav", model_type="nonexistent")
+            ChatterboxTTS(voice_file=_FAKE_WAV, model_type="nonexistent")
 
     def test_repr(self):
-        backend = ChatterboxTTS(voice_file="/tmp/ref.wav")
+        backend = ChatterboxTTS(voice_file=_FAKE_WAV)
         assert "ChatterboxTTS" in repr(backend)
 
     def test_lazy_model_not_loaded(self):
-        backend = ChatterboxTTS(voice_file="/tmp/ref.wav")
+        backend = ChatterboxTTS(voice_file=_FAKE_WAV)
         assert backend._model is None
 
 
@@ -242,21 +248,21 @@ class TestChatterboxProviderRegistry:
         config = ConfigNode({
             "tts": {
                 "provider": "chatterbox",
-                "voice_file": "/tmp/ref.wav",
+                "voice_file": _FAKE_WAV,
                 "model_type": "original",
                 "device": "cpu",
             },
         })
         backend = get_tts_backend(config)
         assert isinstance(backend, ChatterboxTTS)
-        assert backend.voice_file == "/tmp/ref.wav"
+        assert backend.voice_file == _FAKE_WAV
         assert backend.model_type == "original"
 
     def test_factory_forwards_all_params(self):
         config = ConfigNode({
             "tts": {
                 "provider": "chatterbox",
-                "voice_file": "/tmp/ref.wav",
+                "voice_file": _FAKE_WAV,
                 "model_type": "turbo",
                 "device": "cuda",
                 "exaggeration": 0.9,
@@ -274,7 +280,7 @@ class TestChatterboxProviderRegistry:
         config = ConfigNode({
             "tts": {
                 "provider": "chatterbox",
-                "voice_file": "/tmp/ref.wav",
+                "voice_file": _FAKE_WAV,
                 "model_type": "rsxdalv-faster",
                 "device": "auto",
             },
@@ -323,19 +329,19 @@ class TestChatterboxLazyImport:
     """R-20: Lazy import guard."""
 
     def test_import_error_original(self):
-        backend = ChatterboxTTS(voice_file="/tmp/ref.wav", model_type="original")
+        backend = ChatterboxTTS(voice_file=_FAKE_WAV, model_type="original")
         with patch.dict(sys.modules, {"chatterbox": None, "chatterbox.tts": None}):
             with pytest.raises(RuntimeError, match="pip install --no-deps chatterbox-tts"):
                 backend._load_model()
 
     def test_import_error_turbo(self):
-        backend = ChatterboxTTS(voice_file="/tmp/ref.wav", model_type="turbo")
+        backend = ChatterboxTTS(voice_file=_FAKE_WAV, model_type="turbo")
         with patch.dict(sys.modules, {"chatterbox": None, "chatterbox.tts": None}):
             with pytest.raises(RuntimeError, match="pip install --no-deps chatterbox-tts"):
                 backend._load_model()
 
     def test_import_error_rsxdalv_faster(self):
-        backend = ChatterboxTTS(voice_file="/tmp/ref.wav", model_type="rsxdalv-faster")
+        backend = ChatterboxTTS(voice_file=_FAKE_WAV, model_type="rsxdalv-faster")
         with patch.dict(sys.modules, {"chatterbox": None, "chatterbox.tts": None}):
             with pytest.raises(RuntimeError, match="rsxdalv/chatterbox.git@faster"):
                 backend._load_model()

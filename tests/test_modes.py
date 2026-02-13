@@ -1,5 +1,7 @@
 """Tests for the dual assistant mode architecture (R-08)."""
 
+import pathlib
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -16,7 +18,7 @@ from voice_agent.modes import (
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
-def _make_config(mode: str = "chat") -> ConfigNode:
+def _make_config(mode: str = "chat", scratchpad_path: str = "") -> ConfigNode:
     """Return a minimal ConfigNode for testing."""
     return ConfigNode({
         "assistant": {"name": "TestBot", "persona": "A test bot."},
@@ -26,18 +28,24 @@ def _make_config(mode: str = "chat") -> ConfigNode:
         "tts": {"provider": "kokoro", "voice": "af_heart"},
         "mode": mode,
         "conversation": {"max_turns": 10},
-        "scratchpad": {"file": "/tmp/_test_scratchpad_modes.md"},
+        "scratchpad": {"file": scratchpad_path},
     })
 
 
 @pytest.fixture
-def chat_config():
-    return _make_config("chat")
+def sp_path(tmp_path):
+    """Return a cross-platform temporary scratchpad path."""
+    return str(tmp_path / "_test_scratchpad_modes.md")
 
 
 @pytest.fixture
-def agent_config():
-    return _make_config("agent")
+def chat_config(sp_path):
+    return _make_config("chat", scratchpad_path=sp_path)
+
+
+@pytest.fixture
+def agent_config(sp_path):
+    return _make_config("agent", scratchpad_path=sp_path)
 
 
 @pytest.fixture
@@ -49,10 +57,9 @@ def mock_llm():
 
 
 @pytest.fixture(autouse=True)
-def clean_scratchpad():
+def clean_scratchpad(sp_path):
     """Ensure the test scratchpad does not exist."""
-    import pathlib
-    sp = pathlib.Path("/tmp/_test_scratchpad_modes.md")
+    sp = pathlib.Path(sp_path)
     sp.unlink(missing_ok=True)
     yield
     sp.unlink(missing_ok=True)
@@ -63,10 +70,10 @@ def clean_scratchpad():
 # ---------------------------------------------------------------------------
 
 
-def test_mode_handler_is_abstract():
+def test_mode_handler_is_abstract(sp_path):
     """ModeHandler cannot be instantiated directly."""
     with pytest.raises(TypeError):
-        ModeHandler(config=_make_config())
+        ModeHandler(config=_make_config(scratchpad_path=sp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -138,10 +145,9 @@ def test_chat_mode_with_context_files(chat_config, mock_llm, tmp_path):
     assert "Important reference info." in system_content
 
 
-def test_chat_mode_with_scratchpad(chat_config, mock_llm):
+def test_chat_mode_with_scratchpad(chat_config, mock_llm, sp_path):
     """ChatMode includes scratchpad contents in the system prompt."""
-    import pathlib
-    sp = pathlib.Path("/tmp/_test_scratchpad_modes.md")
+    sp = pathlib.Path(sp_path)
     sp.write_text("Remember: user prefers dark mode.")
 
     handler = ChatMode(config=chat_config, llm=mock_llm)
@@ -194,11 +200,11 @@ def test_agent_mode_name(agent_config, mock_llm):
 
 def test_agent_mode_handle_turn(agent_config, mock_llm):
     """AgentMode.handle_turn processes input and returns LLM output."""
-    mock_llm.chat.return_value = "ls -la /tmp"
+    mock_llm.chat.return_value = "list-dir docs"
     handler = AgentMode(config=agent_config, llm=mock_llm)
-    response = handler.handle_turn("List files in temp directory")
+    response = handler.handle_turn("List files in docs directory")
 
-    assert response == "ls -la /tmp"
+    assert response == "list-dir docs"
     messages = handler.history.get_messages_for_llm()
     roles = [m["role"] for m in messages]
     assert roles == ["system", "user", "assistant"]
@@ -255,48 +261,48 @@ def test_get_mode_handler_agent(agent_config, mock_llm):
     assert handler.mode_name == "agent"
 
 
-def test_get_mode_handler_case_insensitive(mock_llm):
+def test_get_mode_handler_case_insensitive(mock_llm, sp_path):
     """Mode name matching is case-insensitive."""
-    config = _make_config("Chat")
+    config = _make_config("Chat", scratchpad_path=sp_path)
     handler = get_mode_handler(config, llm=mock_llm)
     assert isinstance(handler, ChatMode)
 
 
-def test_get_mode_handler_unknown_mode(mock_llm):
+def test_get_mode_handler_unknown_mode(mock_llm, sp_path):
     """get_mode_handler raises ValueError for unknown mode."""
-    config = _make_config("turbo")
+    config = _make_config("turbo", scratchpad_path=sp_path)
     with pytest.raises(ValueError, match="Unknown mode"):
         get_mode_handler(config, llm=mock_llm)
 
 
-def test_get_mode_handler_default_is_chat(mock_llm):
+def test_get_mode_handler_default_is_chat(mock_llm, sp_path):
     """When mode is not set, defaults to chat."""
     config = ConfigNode({
         "assistant": {"name": "Bot", "persona": "Helper."},
         "llm": {"provider": "ollama", "model": "gemma3:4b"},
         "tts": {"provider": "kokoro", "voice": "af_heart"},
         "conversation": {"max_turns": 5},
-        "scratchpad": {"file": "/tmp/_test_scratchpad_modes.md"},
+        "scratchpad": {"file": sp_path},
     })
     handler = get_mode_handler(config, llm=mock_llm)
     assert isinstance(handler, ChatMode)
 
 
-def test_both_modes_share_llm(mock_llm):
+def test_both_modes_share_llm(mock_llm, sp_path):
     """Both modes can share the same LLM backend instance."""
-    chat_cfg = _make_config("chat")
-    agent_cfg = _make_config("agent")
+    chat_cfg = _make_config("chat", scratchpad_path=sp_path)
+    agent_cfg = _make_config("agent", scratchpad_path=sp_path)
     chat_handler = get_mode_handler(chat_cfg, llm=mock_llm)
     agent_handler = get_mode_handler(agent_cfg, llm=mock_llm)
     assert chat_handler.llm is mock_llm
     assert agent_handler.llm is mock_llm
 
 
-def test_modes_have_independent_histories(mock_llm):
+def test_modes_have_independent_histories(mock_llm, sp_path):
     """Each mode handler maintains its own conversation history."""
     mock_llm.chat.side_effect = ["chat reply", "agent reply"]
-    chat = ChatMode(config=_make_config("chat"), llm=mock_llm)
-    agent = AgentMode(config=_make_config("agent"), llm=mock_llm)
+    chat = ChatMode(config=_make_config("chat", scratchpad_path=sp_path), llm=mock_llm)
+    agent = AgentMode(config=_make_config("agent", scratchpad_path=sp_path), llm=mock_llm)
 
     chat.handle_turn("Hi from chat")
     agent.handle_turn("List files")

@@ -283,22 +283,22 @@ This pattern is validated by: [GitHub issue #159](https://github.com/resemble-ai
 
 | ID | Requirement | Depends On | Status |
 |----|-------------|------------|--------|
-| R-24 | **Cross-platform `shlex.split()`** — In `voice_agent/execute.py`, use `shlex.split(command, posix=(os.name != "nt"))` so that backslashes in Windows paths are preserved as literal characters instead of being consumed as POSIX escape sequences. Import `os` at module level. No behaviour change on Linux/macOS. | R-09 | TODO |
-| R-25 | **Cross-platform test commands** — In `tests/test_execute.py` and `tests/test_command_parser.py`, replace all Unix-only shell commands with cross-platform equivalents: (a) `sleep N` → `sys.executable -c "import time; time.sleep(N)"`, (b) `false` → `sys.executable -c "import sys; sys.exit(1)"`, (c) `pwd` → `sys.executable -c "import os; print(os.getcwd())"`, (d) `ls /path` → `sys.executable -c "import os; os.listdir('/nonexistent')"` (or equivalent that produces stderr and non-zero exit). All replacement commands MUST use `sys.executable` to ensure the correct Python interpreter is invoked. | R-09 | TODO |
-| R-26 | **Cross-platform test paths** — In `tests/test_modes.py`, `tests/test_tts.py`, and `tests/test_prompt_loader.py`, replace all hardcoded `/tmp/...` paths with cross-platform alternatives: (a) paths that are written to disk MUST use pytest's `tmp_path` fixture or `tempfile.gettempdir()`, (b) paths used only as string parameters (never accessed on disk) MUST use `os.path.join(tempfile.gettempdir(), "filename")` or a platform-neutral fake path, (c) paths testing "does not exist" scenarios may use `tempfile.gettempdir() + "/no_such_dir_xyz"` to remain valid on all platforms. | — | TODO |
-| R-27 | **Windows compatibility test validation** — After applying R-24 through R-26, run `pytest tests/ -v` on the current platform and verify exit code 0 with zero test failures. Confirm that no test contains hardcoded `/tmp`, `sleep `, `false`, `pwd`, or `ls ` as executed commands. | R-24, R-25, R-26 | TODO |
+| R-24 | **Cross-platform `shlex.split()`** — In `voice_agent/execute.py`, use `shlex.split(command, posix=(os.name != "nt"))` so that backslashes in Windows paths are preserved as literal characters instead of being consumed as POSIX escape sequences. Import `os` at module level. No behaviour change on Linux/macOS. | R-09 | DONE |
+| R-25 | **Cross-platform test commands** — In `tests/test_execute.py` and `tests/test_command_parser.py`, replace all Unix-only shell commands with cross-platform equivalents: (a) `sleep N` → `sys.executable -c "import time; time.sleep(N)"`, (b) `false` → `sys.executable -c "import sys; sys.exit(1)"`, (c) `pwd` → `sys.executable -c "import os; print(os.getcwd())"`, (d) `ls /path` → `sys.executable -c "import os; os.listdir('/nonexistent')"` (or equivalent that produces stderr and non-zero exit). All replacement commands MUST use `sys.executable` to ensure the correct Python interpreter is invoked. | R-09 | DONE |
+| R-26 | **Cross-platform test paths** — In `tests/test_modes.py`, `tests/test_tts.py`, and `tests/test_prompt_loader.py`, replace all hardcoded `/tmp/...` paths with cross-platform alternatives: (a) paths that are written to disk MUST use pytest's `tmp_path` fixture or `tempfile.gettempdir()`, (b) paths used only as string parameters (never accessed on disk) MUST use `os.path.join(tempfile.gettempdir(), "filename")` or a platform-neutral fake path, (c) paths testing "does not exist" scenarios may use `tempfile.gettempdir() + "/no_such_dir_xyz"` to remain valid on all platforms. | — | DONE |
+| R-27 | **Windows compatibility test validation** — After applying R-24 through R-26, run `pytest tests/ -v` on the current platform and verify exit code 0 with zero test failures. Confirm that no test contains hardcoded `/tmp`, `sleep `, `false`, `pwd`, or `ls ` as executed commands. | R-24, R-25, R-26 | DONE |
 
 #### Implementation Checklist (for the implementing session)
 
-1. Fix `shlex.split()` in `voice_agent/execute.py` (R-24)
-2. Replace Unix commands in `tests/test_execute.py` with `sys.executable -c "..."` equivalents (R-25)
-3. Replace `sleep 60` in `tests/test_command_parser.py` with cross-platform equivalent (R-25)
-4. Replace `/tmp` paths in `tests/test_modes.py` with `tmp_path` fixture (R-26)
-5. Replace `/tmp` paths in `tests/test_tts.py` with `tempfile.gettempdir()` (R-26)
-6. Replace `/tmp` paths in `tests/test_prompt_loader.py` with `tempfile.gettempdir()` (R-26)
-7. Run `pytest tests/ -v` — all tests must pass (R-27)
-8. Grep for remaining `/tmp` hardcoded paths — must be zero in test files
-9. Update SPOT.md status columns and revision log
+1. ~~Fix `shlex.split()` in `voice_agent/execute.py`~~ DONE (R-24)
+2. ~~Replace Unix commands in `tests/test_execute.py` with `sys.executable -c "..."` equivalents~~ DONE (R-25)
+3. ~~Replace `sleep 60` in `tests/test_command_parser.py` with cross-platform equivalent~~ DONE (R-25)
+4. ~~Replace `/tmp` paths in `tests/test_modes.py` with `tmp_path` fixture~~ DONE (R-26)
+5. ~~Replace `/tmp` paths in `tests/test_tts.py` with `tempfile.gettempdir()`~~ DONE (R-26)
+6. ~~Replace `/tmp` paths in `tests/test_prompt_loader.py` with `tempfile.gettempdir()`~~ DONE (R-26)
+7. ~~Run `pytest tests/ -v` — all 268 tests pass~~ DONE (R-27)
+8. ~~Grep for remaining `/tmp` hardcoded paths — zero in executed commands~~ DONE (R-27)
+9. ~~Update SPOT.md status columns and revision log~~ DONE
 
 ---
 
@@ -331,3 +331,4 @@ Every commit MUST pass ALL of the following before being pushed:
 | 2026-02-12 | phase-8-spec | Phase 8 requirements added: Chatterbox TTS voice cloning provider (R-18–R-23). Research completed — official `chatterbox-tts` v0.1.6 pip package selected over rsxdalv fork branches (stability + PyPI availability). Cross-validated against GitHub issues, user benchmarks, and community feedback. Additive-only — no changes to Phases 1–7 |
 | 2026-02-12 | phase-8 | Phase 8 complete: ChatterboxTTS provider with 3 model types (original, turbo, rsxdalv-faster). Safe `--no-deps` installation documented. Voice file validation, text chunking, lazy import guards all implemented. rsxdalv `faster` branch added as speed option with torch.compile + CUDA graph optimisations. All tests pass, zero regressions. Strictly additive — no Phases 1–7 files modified except registry + config |
 | 2026-02-13 | phase-9-spec | Phase 9 requirements added: Windows 11 cross-platform compatibility (R-24–R-27). Audit identified 1 production code issue (`shlex.split` POSIX mode) and ~30 Unix-specific test occurrences across 5 test files. Core application code already cross-platform — fixes are limited to `execute.py` and test files only |
+| 2026-02-13 | phase-9 | Phase 9 complete: `shlex.split()` Windows fix in `execute.py` (R-24), all Unix-only test commands replaced with `sys.executable -c "__import__(...)"` cross-platform equivalents (R-25), all hardcoded `/tmp` test paths replaced with `tmp_path` fixtures and `tempfile.gettempdir()` (R-26). All 268 tests pass, zero regressions (R-27). Strictly corrective — no application behaviour changes |

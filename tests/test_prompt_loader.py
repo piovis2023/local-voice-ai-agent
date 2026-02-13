@@ -1,5 +1,8 @@
 """Tests for XML prompt template loader module (R-05)."""
 
+import os
+import tempfile
+
 import pytest
 from pathlib import Path
 
@@ -46,10 +49,10 @@ def test_load_template(prompts_dir):
     assert "{assistant_name}" in tmpl["template"]
 
 
-def test_load_template_missing():
+def test_load_template_missing(tmp_path):
     """FileNotFoundError for non-existent template."""
     with pytest.raises(FileNotFoundError):
-        load_template("nonexistent", "/tmp/empty")
+        load_template("nonexistent", tmp_path)
 
 
 def test_render_template_interpolation(prompts_dir):
@@ -96,7 +99,8 @@ def test_list_templates_empty(tmp_path):
 
 def test_list_templates_nonexistent():
     """Non-existent directory returns empty list."""
-    assert list_templates("/tmp/no_such_dir_xyz") == []
+    nonexistent = os.path.join(tempfile.gettempdir(), "no_such_dir_xyz")
+    assert list_templates(nonexistent) == []
 
 
 def test_default_prompts_directory():
