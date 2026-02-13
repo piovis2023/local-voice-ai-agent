@@ -28,6 +28,19 @@ realtimetts = [
     "RealtimeTTS>=0.3",
     "numpy>=1.24",
 ]
+# Chatterbox TTS voice cloning (Phase 8).
+# NOT listed as an optional-dependency group because chatterbox-tts pins
+# numpy<1.26 which conflicts with kokoro-onnx's numpy>=2.0.2.
+# ALWAYS install manually with --no-deps to preserve your torch/CUDA:
+#
+#   Official (original/turbo):
+#     pip install --no-deps chatterbox-tts
+#
+#   rsxdalv faster branch (torch.compile + CUDA graphs — fastest):
+#     pip install --no-deps git+https://github.com/rsxdalv/chatterbox.git@faster
+#
+#   Then install only missing non-torch deps:
+#     pip install transformers accelerate tqdm scipy conformer
 dev = [
     "pytest>=8.0",
 ]
