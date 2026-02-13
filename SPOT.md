@@ -256,6 +256,76 @@ This pattern is validated by: [GitHub issue #159](https://github.com/resemble-ai
 
 ---
 
+## Test Coverage Analysis (2026-02-13)
+
+**268 tests, all passing** (pytest tests/ -v, ~5s runtime)
+
+### Module Coverage Matrix
+
+| Source Module | Lines | Test File | Test Lines | Tests | Rating |
+|---|---|---|---|---|---|
+| `voice_agent/config.py` | 73 | `test_config.py` | 84 | 6 | Excellent |
+| `voice_agent/history.py` | 62 | `test_history.py` | 76 | 7 | Excellent |
+| `voice_agent/context.py` | 56 | `test_context.py` | 72 | 7 | Excellent |
+| `voice_agent/scratchpad.py` | 55 | `test_scratchpad.py` | 82 | 10 | Excellent |
+| `voice_agent/command_parser.py` | 157 | `test_command_parser.py` | 186 | 20 | Excellent |
+| `voice_agent/execute.py` | 145 | `test_execute.py` | 141 | 16 | Excellent |
+| `voice_agent/prompt_loader.py` | 108 | `test_prompt_loader.py` | 154 | 11 | Excellent |
+| `voice_agent/llm.py` | 167 | `test_llm.py` | 268 | 18 | Excellent |
+| `voice_agent/tts.py` | 376 | `test_tts.py` | 482 | 40 | Excellent |
+| `voice_agent/modes.py` | 204 | `test_modes.py` | 310 | 22 | Excellent |
+| `voice_agent/refinement.py` | 85 | `test_refinement.py` | 137 | 11 | Excellent |
+| `voice_agent/source_analysis.py` | 262 | `test_source_analysis.py` | 340 | 26 | Excellent |
+| `voice_agent/typer_discovery.py` | 178 | `test_typer_discovery.py` | 244 | 16 | Excellent |
+| `commands/db_commands.py` | 199 | `test_db_commands.py` | 221 | 12 | Good |
+| `commands/fs_commands.py` | 83 | `test_fs_commands.py` | 188 | 14 | Excellent |
+| `commands/export_commands.py` | 164 | `test_export_commands.py` | 205 | 11 | Good |
+| — | — | `test_builtin_discovery.py` | 80 | 6 | Integration |
+| `local_voice_chat.py` | 19 | — | 0 | 0 | **None** |
+| `local_voice_chat_advanced.py` | 93 | — | 0 | 0 | **None** |
+
+**Totals:** 2,486 source lines, 3,270 test lines (1.3:1 test-to-source ratio)
+
+### Strengths
+
+- All 13 `voice_agent/` modules rated "Excellent" — every public class, method, and function has tests
+- All 3 `commands/` modules have solid coverage including error paths
+- External services (Ollama, OpenAI, Anthropic, GPU, file I/O) always mocked — tests run offline in ~5s
+- ChatterboxTTS has particularly thorough testing (40 tests covering 3 model types, voice validation, text chunking, lazy imports)
+- Edge cases well covered: empty inputs, missing files, invalid configs, security patterns, refusal detection
+
+### Gaps — High Priority
+
+| Gap | Module(s) | Impact | Recommended Fix |
+|-----|-----------|--------|-----------------|
+| Entry points untested | `local_voice_chat.py`, `local_voice_chat_advanced.py` | Main user-facing apps have 0 tests — config wiring, argument parsing, stream setup unverified | Add integration tests that mock FastRTC/Gradio and verify config→mode-handler wiring |
+| Malformed YAML config | `config.py` | No test for parse errors or invalid YAML | Add tests with broken YAML, empty files, non-dict top-level |
+| API timeout/error recovery | `llm.py` | All API calls mocked as successful — no timeout or network error tests | Add tests for `ConnectionError`, `Timeout`, malformed API responses |
+
+### Gaps — Medium Priority
+
+| Gap | Module(s) | Impact | Recommended Fix |
+|-----|-----------|--------|-----------------|
+| Malformed chain commands | `command_parser.py` | Edge case `&&&&` or trailing `&&` untested | Add parse tests for degenerate chain syntax |
+| Complex type hints in discovery | `typer_discovery.py` | `Union`, `Optional` with nested generics not tested | Add test files with complex annotations |
+| Missing JSON fields in score parsing | `source_analysis.py` | LLM returning partial JSON untested | Add tests for `{"score": 0.8}` without `description` field and vice versa |
+| Permission errors | `scratchpad.py`, `context.py`, `fs_commands.py` | Read/write permission failures untested | Add tests that mock `PermissionError` |
+| Pyttsx3/RealtimeTTS stream output | `tts.py` | `stream_tts()` actual behavior never exercised (only init tested) | Add mocked stream tests similar to Chatterbox/Kokoro |
+
+### Gaps — Low Priority
+
+| Gap | Module(s) | Impact | Recommended Fix |
+|-----|-----------|--------|-----------------|
+| Very large outputs | `execute.py` | Truncation behavior for huge stdout untested | Add test with >1MB subprocess output |
+| Binary file handling | `fs_commands.py` | `compare_files` with binary content untested | Add test with non-text file comparison |
+| Complex WHERE clauses | `db_commands.py` | Multi-condition and edge-case SQL untested | Add tests for `>`, `<`, `LIKE`, compound conditions |
+
+### Environment Note
+
+The `fastrtc[stt]` dependency requires native ffmpeg libraries (`libavformat`, `libavcodec`, etc.) to build the `av` package. In environments without ffmpeg development headers, `uv sync` fails. Tests can still be run by installing `pytest`, `pyyaml`, `typer`, and `loguru` directly via `pip install`. This should be addressed by either: (a) adding ffmpeg to the CI environment, or (b) making `fastrtc` an optional dependency so the test suite can run without it.
+
+---
+
 ## Quality Gateway
 
 Every commit MUST pass ALL of the following before being pushed:
@@ -284,3 +354,4 @@ Every commit MUST pass ALL of the following before being pushed:
 | 2026-02-12 | phase-7 | Phase 7 complete: LLM response refinement pipeline with refinement_prompt template and config toggle (R-16), documentation source analysis pipeline with per-source relevance scoring, threshold filtering, ranked summary, and audio summary via source_relevance_prompt/source_summary_prompt templates (R-17). All 238 tests pass, zero regressions. Strictly additive — no Phases 1–6 files modified |
 | 2026-02-12 | phase-8-spec | Phase 8 requirements added: Chatterbox TTS voice cloning provider (R-18–R-23). Research completed — official `chatterbox-tts` v0.1.6 pip package selected over rsxdalv fork branches (stability + PyPI availability). Cross-validated against GitHub issues, user benchmarks, and community feedback. Additive-only — no changes to Phases 1–7 |
 | 2026-02-12 | phase-8 | Phase 8 complete: ChatterboxTTS provider with 3 model types (original, turbo, rsxdalv-faster). Safe `--no-deps` installation documented. Voice file validation, text chunking, lazy import guards all implemented. rsxdalv `faster` branch added as speed option with torch.compile + CUDA graph optimisations. All tests pass, zero regressions. Strictly additive — no Phases 1–7 files modified except registry + config |
+| 2026-02-13 | test-coverage-analysis | Test coverage analysis added to SPOT.md. 268 tests all passing. 13/13 voice_agent modules rated Excellent, 3/3 command modules rated Good+. Identified gaps: entry points untested (high), malformed YAML/API errors untested (medium), edge cases in parser/discovery/permissions (low). Environment note: fastrtc requires native ffmpeg libs to build av package |
