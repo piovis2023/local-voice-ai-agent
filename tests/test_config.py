@@ -82,3 +82,32 @@ def test_config_node_repr():
     """ConfigNode has a meaningful repr."""
     node = ConfigNode({"key": "value"})
     assert "key" in repr(node)
+
+
+def test_config_node_contains():
+    """ConfigNode supports 'in' membership checks."""
+    node = ConfigNode({"alpha": 1, "beta": {"nested": True}})
+    assert "alpha" in node
+    assert "beta" in node
+    assert "gamma" not in node
+
+
+def test_config_node_iter():
+    """ConfigNode supports iteration over top-level keys."""
+    node = ConfigNode({"x": 1, "y": 2, "z": 3})
+    assert set(node) == {"x", "y", "z"}
+
+
+def test_config_node_len():
+    """ConfigNode supports len()."""
+    assert len(ConfigNode({})) == 0
+    assert len(ConfigNode({"a": 1})) == 1
+    assert len(ConfigNode({"a": 1, "b": 2, "c": 3})) == 3
+
+
+def test_config_node_contains_loaded(sample_config):
+    """Membership check works on a loaded config."""
+    cfg = load_config(sample_config)
+    assert "llm" in cfg
+    assert "tts" in cfg
+    assert "nonexistent" not in cfg

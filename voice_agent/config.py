@@ -46,6 +46,18 @@ class ConfigNode:
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
 
+    def __contains__(self, key: object) -> bool:
+        """Support ``'key' in config`` membership checks."""
+        return key in self._data
+
+    def __iter__(self):
+        """Iterate over top-level keys, like a dict."""
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        """Return the number of top-level keys."""
+        return len(self._data)
+
     def to_dict(self) -> dict[str, Any]:
         """Return the raw dictionary."""
         return self._data
