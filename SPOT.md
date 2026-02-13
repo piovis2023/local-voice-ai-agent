@@ -58,6 +58,7 @@ A fully local, privacy-first, voice AI assistant that listens, understands, reme
 11. **SF-11: Relevance-driven filtering** — Only sources scoring above the configured relevance threshold are surfaced; irrelevant material is discarded before ranking
 12. **SF-12: Additive-only integration** — Phase 7 features are opt-in additions; disabling them has zero impact on existing Phases 1–6 behaviour
 13. **SF-13: Voice-cloned TTS** — The assistant can speak with a user-supplied custom voice via Chatterbox TTS using a single WAV reference file
+14. **SF-14: Windows 11 native support** — The entire application and test suite runs on Windows 11 without modification; no Unix-only commands, paths, or APIs are used
 
 ---
 
@@ -254,6 +255,51 @@ This pattern is validated by: [GitHub issue #159](https://github.com/resemble-ai
 | Breaking changes in future chatterbox-tts versions | Provider stops working | Low | Pin `chatterbox-tts>=0.1.6,<0.2.0` if adding to requirements.txt |
 | Existing TTS providers regressed | Test failures | Zero tolerance | Phase 8 is additive-only; no existing files modified except registry + config |
 
+### Phase 9: Windows 11 Cross-Platform Compatibility
+
+> **Integration constraint:** Phase 9 fixes are strictly corrective. They replace platform-specific code with cross-platform equivalents. They MUST NOT change any application behaviour, API surface, or feature set. All existing tests MUST continue to pass on both Linux and Windows after modification.
+
+#### Audit Summary (2026-02-13)
+
+**Production code (1 issue):**
+- `voice_agent/execute.py` — `shlex.split()` defaults to `posix=True`, treating `\` as escape characters. Windows paths like `C:\Users\name\file.txt` are mangled because backslashes are consumed as escape sequences instead of path separators.
+
+**Test code (4 files, ~30 occurrences):**
+- `tests/test_execute.py` — Uses Unix-only commands: `sleep` (no Windows equivalent), `false` (no Windows equivalent), `pwd` (not on Windows PATH), `ls` (not on Windows PATH).
+- `tests/test_modes.py` — Hardcoded `/tmp/_test_scratchpad_modes.md` path written to disk; `/tmp` does not exist on Windows.
+- `tests/test_command_parser.py` — Uses `sleep 60` in timeout test; `sleep` is not a Windows command.
+- `tests/test_tts.py` — Uses `/tmp/ref.wav` as string parameters in Chatterbox tests; not a valid Windows path format.
+- `tests/test_prompt_loader.py` — Uses `/tmp/empty` and `/tmp/no_such_dir_xyz` as nonexistent directory paths.
+
+**Already cross-platform (no changes needed):**
+- All core modules use `pathlib.Path()` for file operations
+- `subprocess.run()` uses `shell=False` throughout
+- No Unix-only Python modules imported (`fcntl`, `termios`, `pwd`, `grp`, `resource`)
+- No `os.fork()`, signal handling, or file permission calls
+- Config uses relative paths; environment variables use `os.environ.get()`
+- Windows installer script (`scripts/install_chatterbox.bat`) already provided
+
+#### Requirements
+
+| ID | Requirement | Depends On | Status |
+|----|-------------|------------|--------|
+| R-24 | **Cross-platform `shlex.split()`** — In `voice_agent/execute.py`, use `shlex.split(command, posix=(os.name != "nt"))` so that backslashes in Windows paths are preserved as literal characters instead of being consumed as POSIX escape sequences. Import `os` at module level. No behaviour change on Linux/macOS. | R-09 | TODO |
+| R-25 | **Cross-platform test commands** — In `tests/test_execute.py` and `tests/test_command_parser.py`, replace all Unix-only shell commands with cross-platform equivalents: (a) `sleep N` → `sys.executable -c "import time; time.sleep(N)"`, (b) `false` → `sys.executable -c "import sys; sys.exit(1)"`, (c) `pwd` → `sys.executable -c "import os; print(os.getcwd())"`, (d) `ls /path` → `sys.executable -c "import os; os.listdir('/nonexistent')"` (or equivalent that produces stderr and non-zero exit). All replacement commands MUST use `sys.executable` to ensure the correct Python interpreter is invoked. | R-09 | TODO |
+| R-26 | **Cross-platform test paths** — In `tests/test_modes.py`, `tests/test_tts.py`, and `tests/test_prompt_loader.py`, replace all hardcoded `/tmp/...` paths with cross-platform alternatives: (a) paths that are written to disk MUST use pytest's `tmp_path` fixture or `tempfile.gettempdir()`, (b) paths used only as string parameters (never accessed on disk) MUST use `os.path.join(tempfile.gettempdir(), "filename")` or a platform-neutral fake path, (c) paths testing "does not exist" scenarios may use `tempfile.gettempdir() + "/no_such_dir_xyz"` to remain valid on all platforms. | — | TODO |
+| R-27 | **Windows compatibility test validation** — After applying R-24 through R-26, run `pytest tests/ -v` on the current platform and verify exit code 0 with zero test failures. Confirm that no test contains hardcoded `/tmp`, `sleep `, `false`, `pwd`, or `ls ` as executed commands. | R-24, R-25, R-26 | TODO |
+
+#### Implementation Checklist (for the implementing session)
+
+1. Fix `shlex.split()` in `voice_agent/execute.py` (R-24)
+2. Replace Unix commands in `tests/test_execute.py` with `sys.executable -c "..."` equivalents (R-25)
+3. Replace `sleep 60` in `tests/test_command_parser.py` with cross-platform equivalent (R-25)
+4. Replace `/tmp` paths in `tests/test_modes.py` with `tmp_path` fixture (R-26)
+5. Replace `/tmp` paths in `tests/test_tts.py` with `tempfile.gettempdir()` (R-26)
+6. Replace `/tmp` paths in `tests/test_prompt_loader.py` with `tempfile.gettempdir()` (R-26)
+7. Run `pytest tests/ -v` — all tests must pass (R-27)
+8. Grep for remaining `/tmp` hardcoded paths — must be zero in test files
+9. Update SPOT.md status columns and revision log
+
 ---
 
 ## Quality Gateway
@@ -284,3 +330,4 @@ Every commit MUST pass ALL of the following before being pushed:
 | 2026-02-12 | phase-7 | Phase 7 complete: LLM response refinement pipeline with refinement_prompt template and config toggle (R-16), documentation source analysis pipeline with per-source relevance scoring, threshold filtering, ranked summary, and audio summary via source_relevance_prompt/source_summary_prompt templates (R-17). All 238 tests pass, zero regressions. Strictly additive — no Phases 1–6 files modified |
 | 2026-02-12 | phase-8-spec | Phase 8 requirements added: Chatterbox TTS voice cloning provider (R-18–R-23). Research completed — official `chatterbox-tts` v0.1.6 pip package selected over rsxdalv fork branches (stability + PyPI availability). Cross-validated against GitHub issues, user benchmarks, and community feedback. Additive-only — no changes to Phases 1–7 |
 | 2026-02-12 | phase-8 | Phase 8 complete: ChatterboxTTS provider with 3 model types (original, turbo, rsxdalv-faster). Safe `--no-deps` installation documented. Voice file validation, text chunking, lazy import guards all implemented. rsxdalv `faster` branch added as speed option with torch.compile + CUDA graph optimisations. All tests pass, zero regressions. Strictly additive — no Phases 1–7 files modified except registry + config |
+| 2026-02-13 | phase-9-spec | Phase 9 requirements added: Windows 11 cross-platform compatibility (R-24–R-27). Audit identified 1 production code issue (`shlex.split` POSIX mode) and ~30 Unix-specific test occurrences across 5 test files. Core application code already cross-platform — fixes are limited to `execute.py` and test files only |
