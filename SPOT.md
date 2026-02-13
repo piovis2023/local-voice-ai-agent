@@ -324,6 +324,45 @@ This pattern is validated by: [GitHub issue #159](https://github.com/resemble-ai
 
 The `fastrtc[stt]` dependency requires native ffmpeg libraries (`libavformat`, `libavcodec`, etc.) to build the `av` package. In environments without ffmpeg development headers, `uv sync` fails. Tests can still be run by installing `pytest`, `pyyaml`, `typer`, and `loguru` directly via `pip install`. This should be addressed by either: (a) adding ffmpeg to the CI environment, or (b) making `fastrtc` an optional dependency so the test suite can run without it.
 
+### Phase 9: Test Coverage Gap Implementation
+
+> **Integration constraint:** Phase 9 is strictly additive. It adds new test files and extends existing test files. It MUST NOT modify any production code in `voice_agent/`, `commands/`, or entry points. All existing 268 tests MUST continue to pass unmodified.
+
+#### Requirements
+
+| ID | Requirement | Depends On | Status |
+|----|-------------|------------|--------|
+| R-24 | **Entry point integration tests** — Create `tests/test_entry_points.py` with tests for both `local_voice_chat.py` and `local_voice_chat_advanced.py`. Tests MUST mock FastRTC (`fastrtc.ReplyOnPause`, `fastrtc.Stream`) and verify: (a) config is loaded from `assistant_config.yml`, (b) correct LLM/TTS/mode backends are instantiated based on config, (c) `--context-files` argument parsing works in advanced mode, (d) `--phone` flag triggers phone stream setup, (e) stream `.ui.launch()` is called. All external services fully mocked. **Note:** The project does NOT use Gradio — the entry points use FastRTC's built-in WebRTC UI and optional phone interface. | R-01, R-06, R-07, R-08 | TODO |
+| R-25 | **Malformed config tests** — Extend `tests/test_config.py` with tests for: (a) completely invalid YAML (syntax errors) raises a clear exception, (b) empty YAML file returns empty/default config, (c) YAML whose top-level value is a list instead of a dict raises `ValueError`, (d) missing required sections (e.g., no `llm` key) handled gracefully, (e) config values with unexpected types (e.g., `max_turns: "abc"` instead of int). | R-01 | TODO |
+| R-26 | **LLM error recovery tests** — Extend `tests/test_llm.py` with tests for: (a) `ConnectionError` during Ollama/DeepSeek/Anthropic `.chat()` calls, (b) `Timeout` during API calls, (c) API returning malformed JSON or empty response body, (d) API returning unexpected HTTP status codes (429, 500, 503). Mock the underlying client libraries to raise these exceptions. | R-06 | TODO |
+| R-27 | **Command parser edge case tests** — Extend `tests/test_command_parser.py` with tests for: (a) empty `&&` segments (e.g., `cmd1 && && cmd2`), (b) trailing `&&` (e.g., `cmd1 &&`), (c) leading `&&` (e.g., `&& cmd1`), (d) quadruple `&&&&`, (e) commands with quoted strings containing `&&`. | R-10, R-11 | TODO |
+| R-28 | **Permission error tests** — Extend `tests/test_scratchpad.py`, `tests/test_context.py`, and `tests/test_fs_commands.py` with tests that mock `PermissionError` on file read/write operations and verify descriptive error messages or proper exception propagation. | R-03, R-04, R-13 | TODO |
+| R-29 | **TTS stream output tests** — Extend `tests/test_tts.py` with mocked `stream_tts()` tests for `Pyttsx3TTS` and `RealtimeTTSBackend` providers. Verify that `stream_tts(text)` returns an iterator yielding `(sample_rate, audio_array)` tuples, matching the pattern already tested for `KokoroTTS` and `ChatterboxTTS`. | R-07 | TODO |
+| R-30 | **Source analysis partial JSON tests** — Extend `tests/test_source_analysis.py` with tests for: (a) LLM returning `{"score": 0.8}` without a `description` field, (b) LLM returning `{"description": "..."}` without a `score` field, (c) LLM returning completely malformed JSON, (d) LLM returning an empty string. Verify graceful fallback behavior. | R-17 | TODO |
+| R-31 | **Typer discovery complex annotation tests** — Extend `tests/test_typer_discovery.py` with test Typer command files that use: (a) `Union[str, int]` type hints, (b) `Optional[list[str]]` nested generics, (c) `Annotated[str, typer.Argument()]` patterns, (d) default values with complex types. Verify the catalog correctly represents these signatures. | R-12 | TODO |
+
+#### Implementation Checklist (for the implementing session)
+
+1. Create `tests/test_entry_points.py` — mock FastRTC, verify config→backend wiring for both entry points (R-24)
+2. Extend `tests/test_config.py` — add 5+ tests for malformed YAML scenarios (R-25)
+3. Extend `tests/test_llm.py` — add 4+ tests for connection/timeout/malformed response errors (R-26)
+4. Extend `tests/test_command_parser.py` — add 5+ tests for degenerate `&&` chain syntax (R-27)
+5. Extend `tests/test_scratchpad.py`, `tests/test_context.py`, `tests/test_fs_commands.py` — add PermissionError tests (R-28)
+6. Extend `tests/test_tts.py` — add mocked `stream_tts()` tests for Pyttsx3 and RealtimeTTS (R-29)
+7. Extend `tests/test_source_analysis.py` — add partial/malformed JSON parsing tests (R-30)
+8. Extend `tests/test_typer_discovery.py` — add complex type annotation test fixtures (R-31)
+9. Run `pytest tests/ -v` — all existing 268 + new tests must pass (exit code 0)
+10. Update SPOT.md status columns and revision log
+
+#### Key Context for Next Session
+
+- **Python 3.13** (strict, per `.python-version`)
+- **No Gradio** — entry points use FastRTC WebRTC UI directly, not Gradio
+- **fastrtc build issue:** `uv sync` may fail without ffmpeg dev headers. Workaround: `pip install pytest pyyaml typer loguru` directly, then `pytest tests/ -v`
+- **Test pattern:** All tests use `pytest` fixtures, `tmp_path`, and `unittest.mock`. External services always mocked. One test file per module (`test_{module}.py`)
+- **Additive only:** Phase 9 adds/extends test files only. Zero production code changes
+- **Current test count:** 268 tests, all passing, ~5s runtime
+
 ---
 
 ## Quality Gateway
@@ -355,3 +394,4 @@ Every commit MUST pass ALL of the following before being pushed:
 | 2026-02-12 | phase-8-spec | Phase 8 requirements added: Chatterbox TTS voice cloning provider (R-18–R-23). Research completed — official `chatterbox-tts` v0.1.6 pip package selected over rsxdalv fork branches (stability + PyPI availability). Cross-validated against GitHub issues, user benchmarks, and community feedback. Additive-only — no changes to Phases 1–7 |
 | 2026-02-12 | phase-8 | Phase 8 complete: ChatterboxTTS provider with 3 model types (original, turbo, rsxdalv-faster). Safe `--no-deps` installation documented. Voice file validation, text chunking, lazy import guards all implemented. rsxdalv `faster` branch added as speed option with torch.compile + CUDA graph optimisations. All tests pass, zero regressions. Strictly additive — no Phases 1–7 files modified except registry + config |
 | 2026-02-13 | test-coverage-analysis | Test coverage analysis added to SPOT.md. 268 tests all passing. 13/13 voice_agent modules rated Excellent, 3/3 command modules rated Good+. Identified gaps: entry points untested (high), malformed YAML/API errors untested (medium), edge cases in parser/discovery/permissions (low). Environment note: fastrtc requires native ffmpeg libs to build av package |
+| 2026-02-13 | phase-9-spec | Phase 9 requirements added: 8 test coverage gap requirements (R-24–R-31) with implementation checklist and key context for next session. Covers entry point integration tests, malformed config, LLM error recovery, parser edge cases, permission errors, TTS stream tests, partial JSON parsing, complex type annotations. Additive-only — no production code changes |
