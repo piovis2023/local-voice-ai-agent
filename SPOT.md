@@ -240,6 +240,58 @@ python -c "import torch; print(torch.cuda.is_available(), torch.__version__)"
 
 This pattern is validated by: [GitHub issue #159](https://github.com/resemble-ai/chatterbox/issues/159), [Medium RTX 5070 guide (Dec 2025)](https://medium.com/@gideont/how-i-got-chatterbox-tts-running-on-an-rtx-5070-pytorch-2-9-cuda-12-8-afc92bb5c10b), and the [FastRTC emotion project](https://github.com/dwain-barnes/chatterbox-fastrtc-realtime-emotion).
 
+#### Multi-Model Testing Strategy
+
+All 3 Chatterbox variants share 99% of their dependencies and all work with CUDA 12.6.
+Two strategies for switching between models:
+
+**Strategy A: Single env + swap (simplest)**
+
+All non-torch deps stay installed. Only the chatterbox package itself is swapped:
+
+```bash
+# Swap from whatever's currently installed to a different variant
+python scripts/install_chatterbox.py --swap original
+python scripts/install_chatterbox.py --swap turbo           # same package, just verifies
+python scripts/install_chatterbox.py --swap rsxdalv-faster  # uninstalls official, installs fork
+```
+
+| From | To | What happens |
+|---|---|---|
+| original | turbo | Nothing — same package, both models already available |
+| original | rsxdalv-faster | Uninstalls `chatterbox-tts`, installs fork, adds `resampy` |
+| rsxdalv-faster | original/turbo | Uninstalls fork, installs `chatterbox-tts` |
+
+**Strategy B: Separate conda envs (for side-by-side A/B testing)**
+
+```bash
+# Windows: double-click scripts/setup_chatterbox_envs.bat
+# Creates two envs with identical torch + CUDA, different chatterbox packages:
+conda activate chatterbox-official    # original + turbo
+conda activate chatterbox-rsxdalv     # rsxdalv-faster (torch.compile)
+```
+
+| Layer | Shared? |
+|---|---|
+| CUDA 12.6 system driver | Shared (system-wide) |
+| torch + torchaudio | Per-env (same version, separate installs) |
+| Non-torch deps | Per-env (99% identical) |
+| chatterbox package | Per-env (official vs fork) |
+| HuggingFace model cache | Shared (`~/.cache/huggingface/`) — models downloaded once |
+
+**Dependency overlap analysis:**
+
+| Dependency | original + turbo | rsxdalv-faster | Shared? |
+|---|---|---|---|
+| torch, torchaudio | Any (unpinned via --no-deps) | Any (unpinned) | Same |
+| transformers | Yes | Yes | Same |
+| accelerate | Yes | Yes | Same |
+| conformer, scipy, tqdm | Yes | Yes | Same |
+| librosa, soundfile | Yes | Yes | Same |
+| encodec, safetensors | Yes | Yes | Same |
+| resampy | Not needed | `==0.4.3` | Fork adds this |
+| gradio | `==5.44.1` (in metadata) | Dropped | Not installed by our script |
+
 #### Risk Mitigation Matrix
 
 | Risk | Impact | Likelihood | Mitigation |

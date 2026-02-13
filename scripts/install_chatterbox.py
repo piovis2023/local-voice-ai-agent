@@ -9,6 +9,7 @@ Usage:
     python scripts/install_chatterbox.py turbo
     python scripts/install_chatterbox.py rsxdalv-faster
     python scripts/install_chatterbox.py --check          # verify only, install nothing
+    python scripts/install_chatterbox.py --swap original   # swap to a different variant
 
 How it works:
     1. Snapshots every package version via `pip freeze`
@@ -17,6 +18,11 @@ How it works:
     4. Installs only the missing non-torch dependencies one-by-one
     5. Re-snapshots and diffs to prove nothing was overwritten
     6. Runs a smoke test import
+
+Swap mode (--swap):
+    Safely uninstalls the current chatterbox variant, then installs the new one.
+    All non-torch deps are kept (99% overlap between variants).
+    Only the chatterbox package itself is swapped.
 
 Safe on: Windows 11 / Linux / macOS, conda / venv / system Python.
 Requires: Python 3.11+, pip, a working torch+CUDA install.
@@ -65,6 +71,13 @@ INSTALL_TARGETS = {
     "turbo": "chatterbox-tts",
     "rsxdalv-faster": "git+https://github.com/rsxdalv/chatterbox.git@faster",
 }
+
+# pip package names to uninstall when swapping variants.
+# Both the official and rsxdalv fork register under these names.
+UNINSTALL_NAMES = ["chatterbox-tts", "tts-webui.chatterbox-tts"]
+
+# Extra deps that only rsxdalv-faster needs (on top of the shared set).
+RSXDALV_EXTRA_DEPS = ["resampy==0.4.3"]
 
 # Non-torch dependencies that chatterbox needs. Installed one-by-one so a
 # single failure doesn't block the rest. Order matters: transformers needs
@@ -248,6 +261,37 @@ def preflight(model_type: str) -> dict[str, str]:
 # Installation
 # ---------------------------------------------------------------------------
 
+def swap_chatterbox(new_model_type: str) -> bool:
+    """Uninstall current chatterbox variant, install the new one.
+
+    Returns True on success. Keeps all non-torch deps in place since they
+    overlap 99% between variants.
+    """
+    _header(f"SWAPPING TO CHATTERBOX ({new_model_type.upper()})")
+
+    # 1. Detect what's currently installed
+    snapshot = _freeze()
+    current = None
+    for name in UNINSTALL_NAMES:
+        if name in snapshot:
+            current = name
+            break
+
+    if current:
+        print(f"  Current: {current}=={snapshot.get(current, '?')}")
+        print(f"  Uninstalling {current}...")
+        result = _pip("uninstall", "-y", current, check=False)
+        if result.returncode == 0:
+            _ok(f"{current} uninstalled")
+        else:
+            _warn(f"Could not uninstall {current} (may not be installed via pip)")
+    else:
+        _warn("No existing chatterbox package found — fresh install")
+
+    # 2. Install the new variant
+    return install_chatterbox(new_model_type)
+
+
 def install_chatterbox(model_type: str) -> bool:
     """Install the chatterbox package with --no-deps. Returns True on success."""
     _header(f"INSTALLING CHATTERBOX ({model_type.upper()})")
@@ -269,13 +313,18 @@ def install_chatterbox(model_type: str) -> bool:
     return False
 
 
-def install_deps() -> list[str]:
+def install_deps(model_type: str = "original") -> list[str]:
     """Install non-torch dependencies one-by-one. Returns list of failures."""
     _header("INSTALLING NON-TORCH DEPENDENCIES")
 
     failures: list[str] = []
 
-    for pkg in REQUIRED_DEPS:
+    # rsxdalv-faster needs one extra dep
+    deps_to_install = list(REQUIRED_DEPS)
+    if model_type == "rsxdalv-faster":
+        deps_to_install.extend(RSXDALV_EXTRA_DEPS)
+
+    for pkg in deps_to_install:
         # Skip if already installed
         try:
             importlib.import_module(pkg.replace("-", "_"))
@@ -476,6 +525,18 @@ def main() -> None:
               python scripts/install_chatterbox.py turbo            # Fastest official (~6x RT)
               python scripts/install_chatterbox.py rsxdalv-faster   # torch.compile + CUDA graphs
               python scripts/install_chatterbox.py --check          # Verify only, install nothing
+              python scripts/install_chatterbox.py --swap turbo     # Swap current -> turbo
+              python scripts/install_chatterbox.py --swap rsxdalv-faster  # Swap -> fork
+
+            Swap mode (--swap):
+              Safely uninstalls current chatterbox, installs the new variant.
+              Non-torch deps are kept since they overlap 99% between all variants.
+              Use this to A/B test models without managing multiple conda envs.
+
+            Multi-env strategy (for side-by-side testing):
+              Run scripts/setup_chatterbox_envs.bat to create separate conda envs:
+                chatterbox-official  -> original + turbo
+                chatterbox-rsxdalv   -> rsxdalv-faster
 
             Safe install guarantee:
               - Uses --no-deps to NEVER touch torch, torchaudio, CUDA, cuDNN, wheel
@@ -496,6 +557,12 @@ def main() -> None:
         help="Check environment only, install nothing",
     )
     parser.add_argument(
+        "--swap",
+        metavar="MODEL",
+        choices=["original", "turbo", "rsxdalv-faster"],
+        help="Swap: uninstall current chatterbox variant, install this one instead",
+    )
+    parser.add_argument(
         "--skip-deps",
         action="store_true",
         help="Skip installing non-torch dependencies (if you already have them)",
@@ -513,9 +580,24 @@ def main() -> None:
         check_only()
         return
 
+    # --swap mode: uninstall current, install new
+    if args.swap:
+        model = args.swap
+        before = preflight(model)
+        if not swap_chatterbox(model):
+            _fail("Aborting — swap failed")
+            sys.exit(1)
+        # Install any missing deps (especially rsxdalv's extra resampy)
+        dep_failures: list[str] = []
+        if not args.skip_deps:
+            dep_failures = install_deps(model)
+        safe = verify(before, model)
+        _save_and_report(args, before, safe, dep_failures, model)
+        return
+
     if not args.model_type:
         parser.print_help()
-        print(f"\n{_col(RED, 'Error: specify a model type or --check')}")
+        print(f"\n{_col(RED, 'Error: specify a model type, --swap MODEL, or --check')}")
         sys.exit(1)
 
     # --- Run the install pipeline ---
@@ -527,17 +609,27 @@ def main() -> None:
 
     dep_failures: list[str] = []
     if not args.skip_deps:
-        dep_failures = install_deps()
+        dep_failures = install_deps(args.model_type)
     else:
         _header("SKIPPING NON-TORCH DEPENDENCIES (--skip-deps)")
 
     safe = verify(before, args.model_type)
+    _save_and_report(args, before, safe, dep_failures, args.model_type)
 
+
+def _save_and_report(
+    args: argparse.Namespace,
+    before: dict[str, str],
+    safe: bool,
+    dep_failures: list[str],
+    model_type: str,
+) -> None:
+    """Save optional snapshot and print the final verdict."""
     # Save snapshot if requested
     if args.save_snapshot:
         after = _freeze()
         snapshot_data = {
-            "model_type": args.model_type,
+            "model_type": model_type,
             "before": before,
             "after": after,
             "protected_changed": not safe,
@@ -564,15 +656,15 @@ def main() -> None:
         _ok("All packages installed successfully")
 
     _ok("Protected packages verified UNCHANGED")
-    _ok(f"Chatterbox ({args.model_type}) is ready to use")
+    _ok(f"Chatterbox ({model_type}) is ready to use")
     print()
     print(f"  Configure in assistant_config.yml:")
     print(f"    tts:")
     print(f"      provider: \"chatterbox\"")
     print(f"      voice_file: \"path/to/your_voice.wav\"")
-    print(f"      model_type: \"{args.model_type}\"")
+    print(f"      model_type: \"{model_type}\"")
     print(f"      device: \"auto\"")
-    if args.model_type != "turbo":
+    if model_type != "turbo":
         print(f"      exaggeration: 0.5")
         print(f"      cfg_weight: 0.5")
     print()
